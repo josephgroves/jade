@@ -268,11 +268,3 @@ bun run index.ts --help
 - Bun runtime
 - Git
 
-## Features
-
-- 🎨 Beautiful colored output with structured logging
-- 🚀 Fast TypeScript execution with Bun
-- 🌳 Smart branch management across all submodules
-- 📦 Simple repo management with orgUrl shortcuts
-- 🔄 Automatic submodule initialization
-

@@ -1,6 +1,5 @@
 import { $ } from "bun";
 import { resolve } from "path";
-import consola from "consola";
 
 export interface WorktreeInfo {
   path: string;
@@ -136,7 +135,7 @@ export async function gitSubmoduleCreateBranches(
         created.push(submodule);
       }
     } catch (error) {
-      consola.warn(`Could not create branch '${branchName}' in ${submodule}: ${error}`);
+      console.warn(`⚠️  Could not create branch '${branchName}' in ${submodule}: ${error}`);
     }
   }
 
