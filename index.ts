@@ -9,7 +9,7 @@ import status from "./src/commands/status.ts";
 const main = defineCommand({
   meta: {
     name: "jade",
-    version: "0.1.1",
+    version: "0.1.2",
     description: "Worktree workspace manager for multi-app development",
   },
   subCommands: {

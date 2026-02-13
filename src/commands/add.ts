@@ -1,6 +1,7 @@
 import { defineCommand } from "citty";
 import { resolve } from "path";
 import { existsSync } from "fs";
+import consola from "consola";
 import { gitSubmoduleAdd, gitAdd, gitCommit } from "../utils/git.ts";
 import { findWorkspaceRoot, getMainWorktreePath } from "../utils/workspace.ts";
 import { addAppToConfig, readConfig } from "../utils/config.ts";
@@ -33,14 +34,14 @@ export default defineCommand({
       : findWorkspaceRoot();
 
     if (!workspaceRoot) {
-      console.error("❌ Not in a jade workspace. Run 'jade init' first.");
+      consola.error("Not in a jade workspace. Run 'jade init' first.");
       process.exit(1);
     }
 
     const mainPath = getMainWorktreePath(workspaceRoot);
 
     if (!existsSync(mainPath)) {
-      console.error("❌ Main worktree not found. Workspace may be corrupted.");
+      consola.error("Main worktree not found. Workspace may be corrupted.");
       process.exit(1);
     }
 
@@ -61,7 +62,7 @@ export default defineCommand({
       if (!appName) {
         const match = url.match(/\/([^/]+?)(?:\.git)?$/);
         if (!match?.[1]) {
-          console.error("❌ Could not extract app name from URL. Use --name flag.");
+          consola.error("Could not extract app name from URL. Use --name flag.");
           process.exit(1);
         }
         appName = match[1];
@@ -69,11 +70,9 @@ export default defineCommand({
     } else {
       // Repo name provided - construct URL from orgUrl
       if (!config.orgUrl) {
-        console.error(
-          "❌ No orgUrl configured. Either:\n" +
-          "  1. Provide a full git URL: jade add https://github.com/org/repo\n" +
-          "  2. Set orgUrl in jade.json, then use: jade add repo-name"
-        );
+        consola.error("No orgUrl configured. Either:");
+        consola.info("  1. Provide a full git URL: jade add https://github.com/org/repo");
+        consola.info("  2. Set orgUrl in jade.json, then use: jade add repo-name");
         process.exit(1);
       }
 
@@ -89,37 +88,37 @@ export default defineCommand({
         url = `${baseUrl}/${input}`;
       }
       
-      console.log(`🔗 Using orgUrl from config: ${config.orgUrl}`);
+      consola.info(`Using orgUrl from config: ${config.orgUrl}`);
     }
 
-    const appPath = `apps/${appName}`;
+    const appPath = appName;  // No apps/ prefix
     const fullAppPath = resolve(mainPath, appPath);
 
-    console.log(`📦 Adding ${appName} from ${url}`);
+    consola.start(`Adding ${appName} from ${url}`);
 
     // Check if app already exists
     if (existsSync(fullAppPath)) {
-      console.error(`❌ App '${appName}' already exists in apps/`);
+      consola.error(`App '${appName}' already exists`);
       process.exit(1);
     }
 
     try {
       // Add submodule
       await gitSubmoduleAdd(mainPath, url, appPath);
-      console.log(`✓ Added submodule at ${appPath}`);
+      consola.success(`Added submodule at ${appPath}`);
 
       // Commit the submodule addition
       await gitAdd(mainPath, [".gitmodules", appPath]);
       await gitCommit(mainPath, `chore: add ${appName} submodule`);
-      console.log(`✓ Committed submodule addition`);
+      consola.success("Committed submodule addition");
 
       // Update config
       await addAppToConfig(workspaceRoot, appName);
-      console.log(`✓ Updated jade.json config`);
+      consola.success("Updated jade.json config");
 
-      console.log(`\n✨ Successfully added ${appName}!`);
+      consola.box(`Successfully added ${appName}!`);
     } catch (error) {
-      console.error(`❌ Failed to add submodule: ${error}`);
+      consola.error(`Failed to add submodule: ${error}`);
       process.exit(1);
     }
   },

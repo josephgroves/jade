@@ -78,7 +78,7 @@ jade add git@github.com:myorg/private-repo.git
 jade worktree add <name> [--branch <branch>]
 ```
 
-Creates a new worktree and initializes all submodules.
+Creates a new worktree and initializes all submodules. **Automatically creates matching branches in all submodules** with the same name as the worktree branch.
 
 **Options:**
 - `--branch <name>` / `-b <name>` - Branch name (defaults to worktree name)
@@ -88,6 +88,12 @@ Creates a new worktree and initializes all submodules.
 ```bash
 jade worktree add feature-auth --branch feature/authentication
 ```
+
+This will:
+1. Create a new worktree at `./feature-auth`
+2. Create branch `feature/authentication` for the worktree
+3. Initialize all submodules
+4. Create branch `feature/authentication` in each submodule automatically
 
 #### List worktrees
 
@@ -160,22 +166,24 @@ jade status
 
 # 4. Create a feature worktree
 jade worktree add feat-navigation -b feature/navigation
+# ✓ Automatically creates 'feature/navigation' branch in all submodules!
 
 # 5. Work in the new worktree
 cd feat-navigation
 
-# 6. Create branches in specific apps
-jade checkout feature/navigation --app app-a --create
-jade checkout feature/navigation --app shared-components --create
+# 6. All submodules are already on the feature/navigation branch
+# Just start making changes!
+cd app-a
+# make changes
+git add .
+git commit -m "feat: update navigation"
+cd ..
 
-# 7. Make changes, commit within submodules...
-# (work in apps/app-a and apps/shared-components)
-
-# 8. Commit submodule pointer updates in the worktree
-git add apps/app-a apps/shared-components
+# 7. Commit submodule pointer updates in the worktree
+git add app-a shared-components
 git commit -m "feat: update app navigation"
 
-# 9. When done, clean up
+# 8. When done, clean up
 cd ..
 jade worktree remove feat-navigation
 ```
@@ -259,3 +267,12 @@ bun run index.ts --help
 
 - Bun runtime
 - Git
+
+## Features
+
+- 🎨 Beautiful colored output with structured logging
+- 🚀 Fast TypeScript execution with Bun
+- 🌳 Smart branch management across all submodules
+- 📦 Simple repo management with orgUrl shortcuts
+- 🔄 Automatic submodule initialization
+

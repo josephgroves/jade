@@ -1,4 +1,6 @@
 import { $ } from "bun";
+import { resolve } from "path";
+import consola from "consola";
 
 export interface WorktreeInfo {
   path: string;
@@ -53,20 +55,41 @@ export async function gitWorktreeList(cwd: string): Promise<WorktreeInfo[]> {
       current.branch = line.substring(7).replace("refs/heads/", "");
     } else if (line.startsWith("HEAD ")) {
       current.commit = line.substring(5);
+    } else if (line.startsWith("bare")) {
+      // Bare repo worktree - skip it
+      current = {};
     } else if (line === "" && current.path) {
-      worktrees.push(current as WorktreeInfo);
+      // Only add if we have required fields
+      if (current.path && current.branch && current.commit) {
+        worktrees.push(current as WorktreeInfo);
+      }
       current = {};
     }
+  }
+
+  // Handle last entry if file doesn't end with newline
+  if (current.path && current.branch && current.commit) {
+    worktrees.push(current as WorktreeInfo);
   }
 
   return worktrees;
 }
 
 /**
- * Remove a worktree
+ * Remove a worktree (deinitializes submodules first)
  */
 export async function gitWorktreeRemove(cwd: string, name: string): Promise<void> {
-  await $`git worktree remove ${name}`.cwd(cwd);
+  const worktreePath = `${cwd}/${name}`;
+  
+  // First, deinitialize all submodules in the worktree
+  try {
+    await $`git submodule deinit --all -f`.cwd(worktreePath);
+  } catch {
+    // Ignore if no submodules exist
+  }
+  
+  // Now remove the worktree
+  await $`git worktree remove ${name} -f`.cwd(cwd);
   await $`git worktree prune`.cwd(cwd);
 }
 
@@ -86,6 +109,38 @@ export async function gitSubmoduleAdd(
  */
 export async function gitSubmoduleUpdate(cwd: string): Promise<void> {
   await $`git submodule update --init --recursive`.cwd(cwd);
+}
+
+/**
+ * Create a branch in all submodules
+ */
+export async function gitSubmoduleCreateBranches(
+  cwd: string,
+  branchName: string
+): Promise<string[]> {
+  const submodules = await gitSubmoduleList(cwd);
+  const created: string[] = [];
+
+  for (const submodule of submodules) {
+    const submodulePath = resolve(cwd, submodule);
+    try {
+      // Check if branch already exists
+      const branches = await $`git branch --list ${branchName}`.cwd(submodulePath).text();
+      
+      if (branches.trim()) {
+        // Branch exists, just check it out
+        await gitCheckout(submodulePath, branchName, false);
+      } else {
+        // Branch doesn't exist, create it
+        await gitCheckout(submodulePath, branchName, true);
+        created.push(submodule);
+      }
+    } catch (error) {
+      consola.warn(`Could not create branch '${branchName}' in ${submodule}: ${error}`);
+    }
+  }
+
+  return created;
 }
 
 /**

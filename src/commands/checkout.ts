@@ -1,6 +1,7 @@
 import { defineCommand } from "citty";
 import { resolve } from "path";
 import { existsSync } from "fs";
+import consola from "consola";
 import { gitCheckout } from "../utils/git.ts";
 import { findWorkspaceRoot } from "../utils/workspace.ts";
 
@@ -37,7 +38,7 @@ export default defineCommand({
       : findWorkspaceRoot();
 
     if (!workspaceRoot) {
-      console.error("❌ Not in a jade workspace. Run 'jade init' first.");
+      consola.error("Not in a jade workspace. Run 'jade init' first.");
       process.exit(1);
     }
 
@@ -50,11 +51,11 @@ export default defineCommand({
 
     if (app) {
       // Checkout in a specific app submodule
-      targetPath = resolve(process.cwd(), "apps", app);
+      targetPath = resolve(process.cwd(), app);  // No apps/ prefix
       targetDescription = `app '${app}'`;
 
       if (!existsSync(targetPath)) {
-        console.error(`❌ App '${app}' not found in current worktree`);
+        consola.error(`App '${app}' not found in current worktree`);
         process.exit(1);
       }
     } else {
@@ -64,13 +65,13 @@ export default defineCommand({
     }
 
     const action = create ? "Creating and checking out" : "Checking out";
-    console.log(`${action} branch '${branch}' in ${targetDescription}`);
+    consola.start(`${action} branch '${branch}' in ${targetDescription}`);
 
     try {
       await gitCheckout(targetPath, branch, create);
-      console.log(`✓ ${create ? "Created and checked out" : "Checked out"} branch '${branch}'`);
+      consola.success(`${create ? "Created and checked out" : "Checked out"} branch '${branch}'`);
     } catch (error) {
-      console.error(`❌ Failed to checkout branch: ${error}`);
+      consola.error(`Failed to checkout branch: ${error}`);
       process.exit(1);
     }
   },

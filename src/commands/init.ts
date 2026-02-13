@@ -1,6 +1,7 @@
 import { defineCommand } from "citty";
 import { resolve } from "path";
 import { existsSync, mkdirSync } from "fs";
+import consola from "consola";
 import { gitInitBare, writeGitPointer, gitWorktreeAdd } from "../utils/git.ts";
 import { writeConfig } from "../utils/config.ts";
 import { getBarePath, getMainWorktreePath } from "../utils/workspace.ts";
@@ -31,15 +32,15 @@ export default defineCommand({
     const barePath = getBarePath(workspaceRoot);
     const mainPath = getMainWorktreePath(workspaceRoot);
 
-    console.log(`🌆 Initializing workspace at: ${workspaceRoot}`);
+    consola.start(`Initializing workspace at: ${workspaceRoot}`);
 
     // Create workspace directory if it doesn't exist
     if (!existsSync(workspaceRoot)) {
       mkdirSync(workspaceRoot, { recursive: true });
-      console.log(`✓ Created workspace directory`);
+      consola.success("Created workspace directory");
     } else {
       if (existsSync(barePath)) {
-        console.error(`❌ Workspace already initialized at ${workspaceRoot}`);
+        consola.error(`Workspace already initialized at ${workspaceRoot}`);
         process.exit(1);
       }
     }
@@ -47,15 +48,15 @@ export default defineCommand({
     // Initialize bare repository
     mkdirSync(barePath, { recursive: true });
     await gitInitBare(barePath);
-    console.log(`✓ Initialized bare repository in .bare/`);
+    consola.success("Initialized bare repository in .bare/");
 
     // Create .git pointer file
     await writeGitPointer(workspaceRoot, "./.bare");
-    console.log(`✓ Created .git pointer`);
+    consola.success("Created .git pointer");
 
     // Create main worktree
     await gitWorktreeAdd(workspaceRoot, "main", args.branch as string);
-    console.log(`✓ Created main worktree on branch '${args.branch}'`);
+    consola.success(`Created main worktree on branch '${args.branch}'`);
 
     // Write config
     await writeConfig(workspaceRoot, {
@@ -64,11 +65,8 @@ export default defineCommand({
       apps: [],
       orgUrl: args.orgUrl as string | undefined,
     });
-    console.log(`✓ Created jade.json config`);
+    consola.success("Created jade.json config");
 
-    console.log(`\n✨ Workspace initialized successfully!`);
-    console.log(`\nNext steps:`);
-    console.log(`  cd ${args.path}`);
-    console.log(`  jade add <repo-url> --name <app-name>`);
+    consola.box(`Workspace initialized successfully!\n\nNext steps:\n  cd ${args.path}\n  jade add <repo-url> --name <app-name>`);
   },
 });

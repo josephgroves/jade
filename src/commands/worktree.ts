@@ -1,10 +1,12 @@
 import { defineCommand } from "citty";
 import { resolve } from "path";
+import consola from "consola";
 import {
   gitWorktreeAdd,
   gitWorktreeList,
   gitWorktreeRemove,
   gitSubmoduleUpdate,
+  gitSubmoduleCreateBranches,
   isBranchCheckedOut,
 } from "../utils/git.ts";
 import { findWorkspaceRoot } from "../utils/workspace.ts";
@@ -37,36 +39,40 @@ const addCommand = defineCommand({
       : findWorkspaceRoot();
 
     if (!workspaceRoot) {
-      console.error("❌ Not in a jade workspace. Run 'jade init' first.");
+      consola.error("Not in a jade workspace. Run 'jade init' first.");
       process.exit(1);
     }
 
     const name = args.name as string;
     const branch = (args.branch as string) || name;
 
-    console.log(`🌿 Creating worktree '${name}' on branch '${branch}'`);
+    consola.start(`Creating worktree '${name}' on branch '${branch}'`);
 
     // Check if branch is already checked out
     if (await isBranchCheckedOut(workspaceRoot, branch)) {
-      console.error(`❌ Branch '${branch}' is already checked out in another worktree`);
+      consola.error(`Branch '${branch}' is already checked out in another worktree`);
       process.exit(1);
     }
 
     try {
       // Create worktree
       await gitWorktreeAdd(workspaceRoot, name, branch);
-      console.log(`✓ Created worktree at ./${name}`);
+      consola.success(`Created worktree at ./${name}`);
 
       // Initialize submodules
       const worktreePath = resolve(workspaceRoot, name);
       await gitSubmoduleUpdate(worktreePath);
-      console.log(`✓ Initialized submodules`);
+      consola.success("Initialized submodules");
 
-      console.log(`\n✨ Worktree '${name}' created successfully!`);
-      console.log(`\nNext steps:`);
-      console.log(`  cd ${name}`);
+      // Create matching branches in all submodules
+      const created = await gitSubmoduleCreateBranches(worktreePath, branch);
+      if (created.length > 0) {
+        consola.success(`Created branch '${branch}' in: ${created.join(", ")}`);
+      }
+
+      consola.box(`Worktree '${name}' created successfully!\n\nNext steps:\n  cd ${name}`);
     } catch (error) {
-      console.error(`❌ Failed to create worktree: ${error}`);
+      consola.error(`Failed to create worktree: ${error}`);
       process.exit(1);
     }
   },
@@ -90,7 +96,7 @@ const listCommand = defineCommand({
       : findWorkspaceRoot();
 
     if (!workspaceRoot) {
-      console.error("❌ Not in a jade workspace. Run 'jade init' first.");
+      consola.error("Not in a jade workspace. Run 'jade init' first.");
       process.exit(1);
     }
 
@@ -98,17 +104,18 @@ const listCommand = defineCommand({
       const worktrees = await gitWorktreeList(workspaceRoot);
 
       if (worktrees.length === 0) {
-        console.log("No worktrees found.");
+        consola.info("No worktrees found.");
         return;
       }
 
-      console.log("Worktrees:\n");
+      consola.log("\nWorktrees:\n");
       for (const wt of worktrees) {
         const shortCommit = wt.commit.substring(0, 7);
-        console.log(`  ${wt.branch.padEnd(30)} ${wt.path} (${shortCommit})`);
+        consola.log(`  ${wt.branch.padEnd(30)} ${wt.path} (${shortCommit})`);
       }
+      consola.log("");
     } catch (error) {
-      console.error(`❌ Failed to list worktrees: ${error}`);
+      consola.error(`Failed to list worktrees: ${error}`);
       process.exit(1);
     }
   },
@@ -137,24 +144,24 @@ const removeCommand = defineCommand({
       : findWorkspaceRoot();
 
     if (!workspaceRoot) {
-      console.error("❌ Not in a jade workspace. Run 'jade init' first.");
+      consola.error("Not in a jade workspace. Run 'jade init' first.");
       process.exit(1);
     }
 
     const name = args.name as string;
 
     if (name === "main") {
-      console.error("❌ Cannot remove the main worktree");
+      consola.error("Cannot remove the main worktree");
       process.exit(1);
     }
 
-    console.log(`🗑️  Removing worktree '${name}'`);
+    consola.start(`Removing worktree '${name}'`);
 
     try {
       await gitWorktreeRemove(workspaceRoot, name);
-      console.log(`✓ Removed worktree '${name}'`);
+      consola.success(`Removed worktree '${name}'`);
     } catch (error) {
-      console.error(`❌ Failed to remove worktree: ${error}`);
+      consola.error(`Failed to remove worktree: ${error}`);
       process.exit(1);
     }
   },
