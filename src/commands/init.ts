@@ -1,14 +1,13 @@
 import { defineCommand } from "citty";
 import { resolve } from "path";
 import { existsSync, mkdirSync } from "fs";
-import { gitInitBare, writeGitPointer, gitWorktreeAdd } from "../utils/git.ts";
 import { writeConfig } from "../utils/config.ts";
 import { getBarePath, getMainWorktreePath } from "../utils/workspace.ts";
 
 export default defineCommand({
   meta: {
     name: "init",
-    description: "Initialize a new workspace with bare repo and main worktree",
+    description: "Initialize a new workspace",
   },
   args: {
     path: {
@@ -44,18 +43,13 @@ export default defineCommand({
       }
     }
 
-    // Initialize bare repository
+    // Create .bare directory
     mkdirSync(barePath, { recursive: true });
-    await gitInitBare(barePath);
-    console.log(`✓ Initialized bare repository in .bare/`);
+    console.log(`✓ Created .bare/ directory`);
 
-    // Create .git pointer file
-    await writeGitPointer(workspaceRoot, "./.bare");
-    console.log(`✓ Created .git pointer`);
-
-    // Create main worktree
-    await gitWorktreeAdd(workspaceRoot, "main", args.branch as string);
-    console.log(`✓ Created main worktree on branch '${args.branch}'`);
+    // Create main worktree directory
+    mkdirSync(mainPath, { recursive: true });
+    console.log(`✓ Created main/ directory`);
 
     // Write config
     await writeConfig(workspaceRoot, {

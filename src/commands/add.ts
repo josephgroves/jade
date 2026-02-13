@@ -1,14 +1,14 @@
 import { defineCommand } from "citty";
 import { resolve } from "path";
-import { existsSync } from "fs";
-import { gitSubmoduleAdd, gitAdd, gitCommit } from "../utils/git.ts";
-import { findWorkspaceRoot, getMainWorktreePath } from "../utils/workspace.ts";
+import { existsSync, mkdirSync } from "fs";
+import { gitCloneBare, gitWorktreeAdd } from "../utils/git.ts";
+import { findWorkspaceRoot, getBarePath, listWorktreeDirs } from "../utils/workspace.ts";
 import { addAppToConfig, readConfig } from "../utils/config.ts";
 
 export default defineCommand({
   meta: {
     name: "add",
-    description: "Add a repository as a submodule in the apps/ directory",
+    description: "Add a repository to the workspace",
   },
   args: {
     repoNameOrUrl: {
@@ -34,13 +34,6 @@ export default defineCommand({
 
     if (!workspaceRoot) {
       console.error("❌ Not in a jade workspace. Run 'jade init' first.");
-      process.exit(1);
-    }
-
-    const mainPath = getMainWorktreePath(workspaceRoot);
-
-    if (!existsSync(mainPath)) {
-      console.error("❌ Main worktree not found. Workspace may be corrupted.");
       process.exit(1);
     }
 
@@ -92,26 +85,46 @@ export default defineCommand({
       console.log(`🔗 Using orgUrl from config: ${config.orgUrl}`);
     }
 
-    const appPath = appName;  // No apps/ prefix
-    const fullAppPath = resolve(mainPath, appPath);
+    const barePath = getBarePath(workspaceRoot);
+    const bareRepoPath = resolve(barePath, appName);
 
     console.log(`📦 Adding ${appName} from ${url}`);
 
     // Check if app already exists
-    if (existsSync(fullAppPath)) {
-      console.error(`❌ App '${appName}' already exists`);
+    if (existsSync(bareRepoPath)) {
+      console.error(`❌ App '${appName}' already exists in .bare/`);
       process.exit(1);
     }
 
     try {
-      // Add submodule
-      await gitSubmoduleAdd(mainPath, url, appPath);
-      console.log(`✓ Added submodule at ${appPath}`);
+      // Clone bare repository
+      await gitCloneBare(url, bareRepoPath);
+      console.log(`✓ Cloned bare repository to .bare/${appName}`);
 
-      // Commit the submodule addition
-      await gitAdd(mainPath, [".gitmodules", appPath]);
-      await gitCommit(mainPath, `chore: add ${appName} submodule`);
-      console.log(`✓ Committed submodule addition`);
+      // Get all worktree directories
+      const worktreeDirs = listWorktreeDirs(workspaceRoot);
+
+      // Create worktrees in each directory
+      for (const dirName of worktreeDirs) {
+        const worktreePath = resolve(workspaceRoot, dirName, appName);
+        
+        // Create parent directory if it doesn't exist
+        mkdirSync(resolve(workspaceRoot, dirName), { recursive: true });
+
+        if (dirName === "main") {
+          // For main, use the repo's default branch
+          const actualBranch = await gitWorktreeAdd(bareRepoPath, worktreePath);
+          console.log(`✓ Created worktree in main/${appName} (branch: ${actualBranch})`);
+        } else {
+          // For other directories, use the directory name as branch (create or checkout)
+          const actualBranch = await gitWorktreeAdd(bareRepoPath, worktreePath, dirName);
+          if (actualBranch !== dirName) {
+            console.log(`✓ Created worktree in ${dirName}/${appName} (branch: ${actualBranch} - conflict resolved)`);
+          } else {
+            console.log(`✓ Created worktree in ${dirName}/${appName} (branch: ${dirName})`);
+          }
+        }
+      }
 
       // Update config
       await addAppToConfig(workspaceRoot, appName);
@@ -119,7 +132,7 @@ export default defineCommand({
 
       console.log(`\n✨ Successfully added ${appName}!`);
     } catch (error) {
-      console.error(`❌ Failed to add submodule: ${error}`);
+      console.error(`❌ Failed to add repository: ${error}`);
       process.exit(1);
     }
   },

@@ -7,7 +7,7 @@ import { findWorkspaceRoot } from "../utils/workspace.ts";
 export default defineCommand({
   meta: {
     name: "checkout",
-    description: "Checkout or create a branch on the hub or a specific app",
+    description: "Checkout or create a branch in a specific app",
   },
   args: {
     branch: {
@@ -17,7 +17,7 @@ export default defineCommand({
     },
     app: {
       type: "string",
-      description: "App name (if checking out in a submodule)",
+      description: "App name (if checking out in a specific app)",
     },
     create: {
       type: "boolean",
@@ -49,18 +49,18 @@ export default defineCommand({
     let targetDescription: string;
 
     if (app) {
-      // Checkout in a specific app submodule
-      targetPath = resolve(process.cwd(), app);  // No apps/ prefix
+      // Checkout in a specific app
+      targetPath = resolve(process.cwd(), app);
       targetDescription = `app '${app}'`;
 
       if (!existsSync(targetPath)) {
-        console.error(`❌ App '${app}' not found in current worktree`);
+        console.error(`❌ App '${app}' not found in current directory`);
         process.exit(1);
       }
     } else {
-      // Checkout in the current worktree
+      // Checkout in the current directory
       targetPath = process.cwd();
-      targetDescription = "current worktree";
+      targetDescription = "current directory";
     }
 
     const action = create ? "Creating and checking out" : "Checking out";

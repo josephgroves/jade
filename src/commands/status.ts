@@ -1,14 +1,14 @@
 import { defineCommand } from "citty";
 import { resolve } from "path";
 import { existsSync } from "fs";
-import { gitWorktreeList, gitSubmoduleList, gitCurrentBranch } from "../utils/git.ts";
-import { findWorkspaceRoot } from "../utils/workspace.ts";
+import { gitCurrentBranch } from "../utils/git.ts";
+import { findWorkspaceRoot, listBareRepos, listWorktreeDirs } from "../utils/workspace.ts";
 import { readConfig } from "../utils/config.ts";
 
 export default defineCommand({
   meta: {
     name: "status",
-    description: "Show workspace status: worktrees, submodules, and branches",
+    description: "Show workspace status: worktree groups, apps, and branches",
   },
   args: {
     workspace: {
@@ -38,39 +38,43 @@ export default defineCommand({
         console.log(`Organization: ${config.orgUrl}`);
       }
 
-      // List worktrees
-      console.log(`\n📂 Worktrees:`);
-      const worktrees = await gitWorktreeList(workspaceRoot);
-      for (const wt of worktrees) {
-        const shortCommit = wt.commit.substring(0, 7);
-        const relPath = wt.path.replace(workspaceRoot + "/", "");
-        console.log(`  • ${wt.branch.padEnd(25)} ${relPath} (${shortCommit})`);
+      // List worktree groups
+      const worktreeDirs = listWorktreeDirs(workspaceRoot);
+      const bareRepos = listBareRepos(workspaceRoot);
+
+      console.log(`\n📂 Worktree Groups:`);
+      if (worktreeDirs.length === 0) {
+        console.log(`  No worktree groups yet. Use 'jade worktree add <name>' to create one.`);
+      } else {
+        for (const dirName of worktreeDirs) {
+          console.log(`  • ${dirName}/`);
+        }
       }
 
-      // List submodules in main worktree
-      const mainPath = resolve(workspaceRoot, "main");
-      if (existsSync(mainPath)) {
-        console.log(`\n📦 Submodules (in main):`);
-        const submodules = await gitSubmoduleList(mainPath);
-
-        if (submodules.length === 0) {
-          console.log(`  No submodules yet. Use 'jade add <url>' to add apps.`);
-        } else {
-          for (const submodule of submodules) {
-            const submodulePath = resolve(mainPath, submodule);
-            if (existsSync(submodulePath)) {
+      // List apps
+      console.log(`\n📦 Apps:`);
+      if (bareRepos.length === 0) {
+        console.log(`  No apps yet. Use 'jade add <url>' to add apps.`);
+      } else {
+        for (const appName of bareRepos) {
+          console.log(`  • ${appName}`);
+          
+          // Show branches in each worktree group
+          for (const dirName of worktreeDirs) {
+            const appPath = resolve(workspaceRoot, dirName, appName);
+            if (existsSync(appPath)) {
               try {
-                const branch = await gitCurrentBranch(submodulePath);
-                console.log(`  • ${submodule.padEnd(25)} on ${branch}`);
+                const branch = await gitCurrentBranch(appPath);
+                console.log(`      ${dirName.padEnd(20)} → ${branch}`);
               } catch {
-                console.log(`  • ${submodule.padEnd(25)} (not initialized)`);
+                console.log(`      ${dirName.padEnd(20)} → (error)`);
               }
             }
           }
         }
       }
 
-      // Show apps from config
+      // Show registered apps from config
       if (config.apps.length > 0) {
         console.log(`\n📋 Registered apps: ${config.apps.join(", ")}`);
       }

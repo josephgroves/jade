@@ -1,5 +1,4 @@
 import { $ } from "bun";
-import { resolve } from "path";
 
 export interface WorktreeInfo {
   path: string;
@@ -8,49 +7,93 @@ export interface WorktreeInfo {
 }
 
 /**
- * Initialize a bare git repository
+ * Clone a bare repository
  */
-export async function gitInitBare(path: string): Promise<void> {
-  await $`git init --bare ${path}`.cwd(path.split("/").slice(0, -1).join("/"));
+export async function gitCloneBare(url: string, destPath: string): Promise<void> {
+  await $`git clone --bare ${url} ${destPath}`;
 }
 
 /**
- * Create a git pointer file
+ * Remove a bare repository directory
  */
-export async function writeGitPointer(path: string, bareDir: string): Promise<void> {
-  await Bun.write(`${path}/.git`, `gitdir: ${bareDir}\n`);
+export async function gitRemoveBareRepo(barePath: string): Promise<void> {
+  await $`rm -rf ${barePath}`;
 }
 
 /**
- * Add a worktree
+ * Get the default branch name from a bare repository
  */
-export async function gitWorktreeAdd(
-  cwd: string,
-  name: string,
-  branch?: string
-): Promise<void> {
-  if (branch) {
-    // Check if branch already exists
-    const branches = await $`git branch --list ${branch}`.cwd(cwd).text();
-    
-    if (branches.trim()) {
-      // Branch exists, checkout existing branch
-      await $`git worktree add ${name} ${branch}`.cwd(cwd);
-    } else {
-      // Branch doesn't exist, create new branch
-      await $`git worktree add ${name} -b ${branch}`.cwd(cwd);
-    }
-  } else {
-    await $`git worktree add ${name}`.cwd(cwd);
+export async function gitGetDefaultBranch(bareRepoPath: string): Promise<string> {
+  try {
+    // Try to get symbolic ref (what HEAD points to)
+    const result = await $`git symbolic-ref refs/remotes/origin/HEAD`.cwd(bareRepoPath).text();
+    // Result will be like "refs/remotes/origin/main"
+    return result.trim().replace("refs/remotes/origin/", "");
+  } catch {
+    // Fallback: try common default branch names
+    const branches = await $`git branch -r`.cwd(bareRepoPath).text();
+    if (branches.includes("origin/main")) return "main";
+    if (branches.includes("origin/master")) return "master";
+    // Last resort: use first branch
+    const firstBranch = branches.trim().split("\n")[0];
+    return firstBranch?.replace("origin/", "").trim() || "main";
   }
 }
 
 /**
- * List all worktrees
+ * Add a worktree from a bare repository
+ * @param bareRepoPath - Path to the bare repository
+ * @param worktreePath - Absolute path where the worktree should be created
+ * @param branch - Optional branch name to checkout or create
+ * @returns The actual branch name used (may differ from input if conflict occurred)
  */
-export async function gitWorktreeList(cwd: string): Promise<WorktreeInfo[]> {
-  const result =
-    await $`git worktree list --porcelain`.cwd(cwd).text();
+export async function gitWorktreeAdd(
+  bareRepoPath: string,
+  worktreePath: string,
+  branch?: string
+): Promise<string | undefined> {
+  if (branch) {
+    // Check if branch already exists
+    const branches = await $`git branch --list ${branch}`.cwd(bareRepoPath).text();
+    
+    if (branches.trim()) {
+      // Branch exists - try to checkout
+      try {
+        await $`git worktree add ${worktreePath} ${branch}`.cwd(bareRepoPath);
+        return branch;
+      } catch (error) {
+        // Failed to checkout (branch already checked out or other conflict)
+        // Generate unique name and create from the original branch
+        const uniqueName = await generateUniqueBranchName(bareRepoPath, branch);
+        await $`git worktree add ${worktreePath} -b ${uniqueName} ${branch}`.cwd(bareRepoPath);
+        return uniqueName;
+      }
+    } else {
+      // Branch doesn't exist, try to create it
+      try {
+        await $`git worktree add ${worktreePath} -b ${branch}`.cwd(bareRepoPath);
+        return branch;
+      } catch (error) {
+        // Failed to create (hierarchical conflict like test vs test/something)
+        // Generate unique name and create
+        const uniqueName = await generateUniqueBranchName(bareRepoPath, branch);
+        await $`git worktree add ${worktreePath} -b ${uniqueName}`.cwd(bareRepoPath);
+        return uniqueName;
+      }
+    }
+  } else {
+    // No branch specified, use the repository's default branch
+    const defaultBranch = await gitGetDefaultBranch(bareRepoPath);
+    await $`git worktree add ${worktreePath} ${defaultBranch}`.cwd(bareRepoPath);
+    return defaultBranch;
+  }
+}
+
+/**
+ * List all worktrees for a bare repository
+ */
+export async function gitWorktreeList(bareRepoPath: string): Promise<WorktreeInfo[]> {
+  const result = await $`git worktree list --porcelain`.cwd(bareRepoPath).text();
 
   const worktrees: WorktreeInfo[] = [];
   const lines = result.split("\n");
@@ -84,86 +127,34 @@ export async function gitWorktreeList(cwd: string): Promise<WorktreeInfo[]> {
 }
 
 /**
- * Remove a worktree (deinitializes submodules first)
+ * Remove a worktree from a bare repository
+ * @param bareRepoPath - Path to the bare repository
+ * @param worktreePath - Absolute path to the worktree to remove
  */
-export async function gitWorktreeRemove(cwd: string, name: string): Promise<void> {
-  const worktreePath = `${cwd}/${name}`;
-  
-  // First, deinitialize all submodules in the worktree
-  try {
-    await $`git submodule deinit --all -f`.cwd(worktreePath);
-  } catch {
-    // Ignore if no submodules exist
-  }
-  
-  // Now remove the worktree
-  await $`git worktree remove ${name} -f`.cwd(cwd);
-  await $`git worktree prune`.cwd(cwd);
+export async function gitWorktreeRemove(bareRepoPath: string, worktreePath: string): Promise<void> {
+  await $`git worktree remove ${worktreePath} -f`.cwd(bareRepoPath);
+  await $`git worktree prune`.cwd(bareRepoPath);
 }
 
 /**
- * Add a submodule
+ * Check if a branch is currently checked out in any worktree
+ * @param bareRepoPath - Path to the bare repository
+ * @param branch - Branch name to check
  */
-export async function gitSubmoduleAdd(
-  cwd: string,
-  url: string,
-  path: string
-): Promise<void> {
-  await $`git submodule add ${url} ${path}`.cwd(cwd);
+export async function isBranchCheckedOutInWorktree(bareRepoPath: string, branch: string): Promise<boolean> {
+  const worktrees = await gitWorktreeList(bareRepoPath);
+  return worktrees.some((wt) => wt.branch === branch);
 }
 
 /**
- * Initialize submodules recursively
+ * Generate a unique branch name with a short hash suffix
+ * @param bareRepoPath - Path to the bare repository
+ * @param baseName - Base name for the branch
  */
-export async function gitSubmoduleUpdate(cwd: string): Promise<void> {
-  await $`git submodule update --init --recursive`.cwd(cwd);
-}
-
-/**
- * Create a branch in all submodules
- */
-export async function gitSubmoduleCreateBranches(
-  cwd: string,
-  branchName: string
-): Promise<string[]> {
-  const submodules = await gitSubmoduleList(cwd);
-  const created: string[] = [];
-
-  for (const submodule of submodules) {
-    const submodulePath = resolve(cwd, submodule);
-    try {
-      // Check if branch already exists
-      const branches = await $`git branch --list ${branchName}`.cwd(submodulePath).text();
-      
-      if (branches.trim()) {
-        // Branch exists, just check it out
-        await gitCheckout(submodulePath, branchName, false);
-      } else {
-        // Branch doesn't exist, create it
-        await gitCheckout(submodulePath, branchName, true);
-        created.push(submodule);
-      }
-    } catch (error) {
-      console.warn(`⚠️  Could not create branch '${branchName}' in ${submodule}: ${error}`);
-    }
-  }
-
-  return created;
-}
-
-/**
- * List submodules
- */
-export async function gitSubmoduleList(cwd: string): Promise<string[]> {
-  try {
-    const result = await $`git config --file .gitmodules --get-regexp path`.cwd(cwd).text();
-    return result
-      .split("\n")
-      .filter((line) => line.trim())
-      .map((line) => line.split(" ")[1]!);
-  } catch {
-    return [];
-  }
+export async function generateUniqueBranchName(bareRepoPath: string, baseName: string): Promise<string> {
+  const result = await $`git rev-parse HEAD`.cwd(bareRepoPath).text();
+  const shortHash = result.trim().substring(0, 7);
+  return `${baseName}-${shortHash}`;
 }
 
 /**
@@ -209,4 +200,19 @@ export async function gitAdd(cwd: string, files: string[]): Promise<void> {
 export async function isBranchCheckedOut(cwd: string, branch: string): Promise<boolean> {
   const worktrees = await gitWorktreeList(cwd);
   return worktrees.some((wt) => wt.branch === branch);
+}
+
+/**
+ * Delete a branch in a repository
+ */
+export async function gitDeleteBranch(
+  cwd: string,
+  branch: string,
+  force: boolean = false
+): Promise<void> {
+  if (force) {
+    await $`git branch -D ${branch}`.cwd(cwd);
+  } else {
+    await $`git branch -d ${branch}`.cwd(cwd);
+  }
 }

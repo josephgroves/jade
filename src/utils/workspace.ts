@@ -1,4 +1,4 @@
-import { existsSync } from "fs";
+import { existsSync, readdirSync } from "fs";
 import { resolve, dirname } from "path";
 
 /**
@@ -45,4 +45,46 @@ export function getMainWorktreePath(workspaceRoot: string): string {
  */
 export function getConfigPath(workspaceRoot: string): string {
   return resolve(workspaceRoot, "jade.json");
+}
+
+/**
+ * List all bare repositories in the .bare directory
+ */
+export function listBareRepos(workspaceRoot: string): string[] {
+  const barePath = getBarePath(workspaceRoot);
+  
+  if (!existsSync(barePath)) {
+    return [];
+  }
+
+  try {
+    return readdirSync(barePath, { withFileTypes: true })
+      .filter((dirent) => dirent.isDirectory())
+      .map((dirent) => dirent.name);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * List all worktree directories in the workspace root
+ * Excludes .bare, jade.json, and dotfiles
+ */
+export function listWorktreeDirs(workspaceRoot: string): string[] {
+  if (!existsSync(workspaceRoot)) {
+    return [];
+  }
+
+  try {
+    return readdirSync(workspaceRoot, { withFileTypes: true })
+      .filter((dirent) => {
+        if (!dirent.isDirectory()) return false;
+        if (dirent.name.startsWith(".")) return false;
+        if (dirent.name === ".bare") return false;
+        return true;
+      })
+      .map((dirent) => dirent.name);
+  } catch {
+    return [];
+  }
 }

@@ -1,6 +1,6 @@
 # jade 🌆
 
-Elegant CLI tool for managing git bare-repo + worktree workspaces with submodules.
+Elegant CLI tool for managing multi-repository workspaces using git bare repos and worktrees.
 
 ## Installation
 
@@ -28,7 +28,7 @@ jade --help
 jade init <path>
 ```
 
-Creates a new workspace with a bare repository and main worktree.
+Creates a new workspace directory structure with `.bare/` and `main/` directories.
 
 **Options:**
 - `--branch <name>` - Default branch name (default: "main")
@@ -40,13 +40,13 @@ jade init ~/workspaces/my-workspace --branch main --orgUrl https://github.com/my
 cd ~/workspaces/my-workspace
 ```
 
-### Add a repository as a submodule
+### Add a repository
 
 ```bash
 jade add <repo-name-or-url> [--name <app-name>]
 ```
 
-Adds a repository as a submodule directly in the worktree root.
+Clones a bare repository to `.bare/<app-name>/` and creates worktrees in all existing worktree directories.
 
 **Smart URL Resolution:**
 - If you provide a **full URL**, it uses that directly
@@ -60,8 +60,8 @@ Adds a repository as a submodule directly in the worktree root.
 
 ```bash
 # If jade.json has "orgUrl": "https://github.com/myorg"
-jade add frontend              # Adds https://github.com/myorg/frontend
-jade add backend              # Adds https://github.com/myorg/backend
+jade add frontend              # Clones https://github.com/myorg/frontend
+jade add backend              # Clones https://github.com/myorg/backend
 
 # Or use full URLs directly
 jade add https://github.com/other-org/shared-lib --name shared
@@ -70,13 +70,13 @@ jade add https://github.com/other-org/shared-lib --name shared
 jade add git@github.com:myorg/private-repo.git
 ```
 
-### Remove a repository submodule
+### Remove a repository
 
 ```bash
 jade remove <app-name>
 ```
 
-Removes a submodule from the main worktree and updates the config. Future worktrees will not include this submodule.
+Removes all worktrees for an app and deletes the bare repository from `.bare/<app-name>/`.
 
 **Options:**
 - `--workspace <path>` / `-w <path>` - Workspace root (defaults to current directory)
@@ -87,48 +87,59 @@ Removes a submodule from the main worktree and updates the config. Future worktr
 jade remove old-app
 ```
 
-**Note:** This only removes the submodule from the main worktree. Existing worktrees will still have the submodule directory (though it will be deinitialized). New worktrees created after removal will not include it.
+### Manage worktree groups
 
-### Manage worktrees
-
-#### Create a new worktree
+#### Create a new worktree group
 
 ```bash
-jade worktree add <name> [--branch <branch>]
+jade worktree add <name>
 ```
 
-Creates a new worktree and initializes all submodules. **Automatically creates matching branches in all submodules** with the same name as the worktree branch.
+Creates a new worktree directory with all apps on a branch matching the directory name. Each app will either create a new branch or check out an existing branch with that name.
 
 **Options:**
-- `--branch <name>` / `-b <name>` - Branch name (defaults to worktree name)
 - `--workspace <path>` / `-w <path>` - Workspace root
 
 **Example:**
 ```bash
-jade worktree add feature-auth --branch feature/authentication
+jade worktree add feature-auth
 ```
 
 This will:
-1. Create a new worktree at `./feature-auth`
-2. Create branch `feature/authentication` for the worktree
-3. Initialize all submodules
-4. Create branch `feature/authentication` in each submodule automatically
+1. Create directory `./feature-auth/`
+2. For each app, create a worktree at `feature-auth/<app>/` on branch `feature-auth`
 
-#### List worktrees
+#### List worktree groups
 
 ```bash
 jade worktree list
 ```
 
-#### Remove a worktree
+Shows all worktree directories and the apps/branches within each.
+
+#### Remove a worktree group
 
 ```bash
-jade worktree remove <name>
+jade worktree remove <name> [--delete-branches] [--force]
 ```
+
+Removes a worktree directory and optionally deletes the branches in all apps.
+
+**Options:**
+- `--delete-branches` / `-d` - Delete branches with the same name in all apps
+- `--force` / `-f` - Force delete branches (use with `-d` for unmerged branches)
+- `--workspace <path>` / `-w <path>` - Workspace root
 
 **Example:**
 ```bash
+# Remove worktree group only
 jade worktree remove feature-auth
+
+# Remove worktree AND delete branches in all apps
+jade worktree remove feature-auth -d
+
+# Force delete even if branches have unmerged changes
+jade worktree remove feature-auth -df
 ```
 
 ### Checkout branches
@@ -137,19 +148,20 @@ jade worktree remove feature-auth
 jade checkout <branch> [--app <name>] [--create]
 ```
 
-Checkout or create a branch on the hub worktree or within a specific app submodule.
+Checkout or create a branch in a specific app.
 
 **Options:**
-- `--app <name>` - App name (checkouts within that submodule)
+- `--app <name>` - App name (checkouts within that app)
 - `--create` / `-c` - Create a new branch
 - `--workspace <path>` / `-w <path>` - Workspace root
 
 **Examples:**
 ```bash
-# Checkout branch in current worktree
+# Checkout branch in current directory
 jade checkout feature/new-feature
 
 # Create and checkout a branch in a specific app
+cd main
 jade checkout feature/user-auth --app frontend --create
 ```
 
@@ -161,20 +173,20 @@ jade status
 
 Displays:
 - Workspace configuration
-- All worktrees with their branches
-- Submodules and their current branches
+- All worktree groups
+- Apps and their branches in each worktree
 - Registered apps
 
 ## Workflow Example
 
 ```bash
 # 1. Initialize workspace with orgUrl
-jade init ~/workspaces/fe-workspace --orgUrl https://github.com/myorg
+jade init ~/workspaces/my-workspace --orgUrl https://github.com/myorg
 
-# 2. Add apps as submodules (using repo names - much simpler!)
-cd ~/workspaces/fe-workspace/main
-jade add app-a
-jade add app-b
+# 2. Add apps (using repo names - much simpler!)
+cd ~/workspaces/my-workspace
+jade add frontend
+jade add backend
 jade add shared-components
 
 # Or mix with full URLs for external repos
@@ -183,36 +195,60 @@ jade add https://github.com/external/library --name external-lib
 # 3. Check status
 jade status
 
-# 4. Create a feature worktree
-jade worktree add feat-navigation -b feature/navigation
-# ✓ Automatically creates 'feature/navigation' branch in all submodules!
+# 4. Create a feature worktree group
+jade worktree add feat-navigation
+# Creates feat-navigation/ with all apps on 'feat-navigation' branch
 
 # 5. Work in the new worktree
-cd feat-navigation
-
-# 6. All submodules are already on the feature/navigation branch
-# Just start making changes!
-cd app-a
+cd feat-navigation/frontend
 # make changes
 git add .
 git commit -m "feat: update navigation"
-cd ..
+git push origin feat-navigation
 
-# 7. Commit submodule pointer updates in the worktree
-git add app-a shared-components
-git commit -m "feat: update app navigation"
+cd ../backend
+# make changes
+git add .
+git commit -m "feat: update API for navigation"
+git push origin feat-navigation
 
-# 8. When done, clean up
-cd ..
-jade worktree remove feat-navigation
+# 6. When done, clean up (optionally delete branches)
+cd ../..
+jade worktree remove feat-navigation -d  # -d deletes branches in all apps
 ```
 
 ## Architecture
 
-- **Bare repo** (`.bare/`) - Central git database
-- **Worktrees** - Isolated physical directories for different branches
-- **Submodules** - Individual apps in `apps/` directory
+The new architecture removes all submodule usage and treats each repository independently:
+
+```
+workspace-root/
+  ├── .bare/
+  │   ├── frontend/      (bare clone of frontend repo)
+  │   ├── backend/       (bare clone of backend repo)
+  │   └── shared/        (bare clone of shared repo)
+  ├── main/
+  │   ├── frontend/      (worktree on default branch)
+  │   ├── backend/       (worktree on default branch)
+  │   └── shared/        (worktree on default branch)
+  ├── feat-navigation/
+  │   ├── frontend/      (worktree on feat-navigation branch)
+  │   ├── backend/       (worktree on feat-navigation branch)
+  │   └── shared/        (worktree on feat-navigation branch)
+  └── jade.json          (configuration)
+```
+
+**Key concepts:**
+- **Bare repos** (`.bare/<app>/`) - Central git database for each repository
+- **Worktree groups** (`main/`, `feat-navigation/`, etc.) - Directories that group worktrees by branch name
+- **App worktrees** - Git worktrees from bare repos, organized by group
 - **Config** (`jade.json`) - Workspace metadata
+
+**Benefits:**
+- No submodule complexity
+- Each app is a fully independent git repo
+- Fast worktree creation (no network fetches after initial clone)
+- Natural branch organization by directory
 
 ## Configuration File
 
@@ -222,10 +258,10 @@ The `jade.json` file is automatically created at the workspace root when you run
 
 ```
 workspace-root/
-  ├── .bare/           # Git bare repository
-  ├── main/            # Main worktree
+  ├── .bare/           # Bare repositories
+  ├── main/            # Main worktree group
   ├── jade.json        # Configuration file (here!)
-  └── ...other worktrees
+  └── ...other worktree groups
 ```
 
 ### Structure
@@ -248,7 +284,7 @@ workspace-root/
 | Field | Type | Description |
 |-------|------|-------------|
 | `version` | string | Config file format version (currently "1.0") |
-| `defaultBranch` | string | Default branch name used when creating worktrees |
+| `defaultBranch` | string | Default branch name (informational only) |
 | `apps` | string[] | List of registered app names (auto-updated by `jade add`) |
 | `orgUrl` | string? | Optional GitHub organization URL. **When set, you can use `jade add repo-name` instead of full URLs!** |
 
@@ -262,7 +298,6 @@ vim workspace-root/jade.json
 ```
 
 **Example use cases:**
-- Change the default branch for new worktrees
 - Remove apps that no longer exist
 - Add an organization URL after initialization
 
@@ -271,8 +306,7 @@ vim workspace-root/jade.json
 The config is automatically updated by jade commands:
 - `jade init` - Creates the initial config
 - `jade add` - Adds app names to the `apps` array
-
-**Note:** The `apps` array is for tracking purposes. Removing an app from the config doesn't delete the submodule - you'll need to use git commands for that.
+- `jade remove` - Removes app names from the `apps` array
 
 ## Development
 
