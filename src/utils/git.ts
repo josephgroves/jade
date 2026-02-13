@@ -30,7 +30,16 @@ export async function gitWorktreeAdd(
   branch?: string
 ): Promise<void> {
   if (branch) {
-    await $`git worktree add ${name} -b ${branch}`.cwd(cwd);
+    // Check if branch already exists
+    const branches = await $`git branch --list ${branch}`.cwd(cwd).text();
+    
+    if (branches.trim()) {
+      // Branch exists, checkout existing branch
+      await $`git worktree add ${name} ${branch}`.cwd(cwd);
+    } else {
+      // Branch doesn't exist, create new branch
+      await $`git worktree add ${name} -b ${branch}`.cwd(cwd);
+    }
   } else {
     await $`git worktree add ${name}`.cwd(cwd);
   }

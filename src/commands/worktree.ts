@@ -18,13 +18,8 @@ const addCommand = defineCommand({
   args: {
     name: {
       type: "positional",
-      description: "Worktree name (directory name)",
+      description: "Worktree name (also used as branch name for submodules)",
       required: true,
-    },
-    branch: {
-      type: "string",
-      alias: "b",
-      description: "Branch name (defaults to same as worktree name)",
     },
     workspace: {
       type: "string",
@@ -43,30 +38,23 @@ const addCommand = defineCommand({
     }
 
     const name = args.name as string;
-    const branch = (args.branch as string) || name;
 
-    console.log(`🌿 Creating worktree '${name}' on branch '${branch}'`);
-
-    // Check if branch is already checked out
-    if (await isBranchCheckedOut(workspaceRoot, branch)) {
-      console.error(`❌ Branch '${branch}' is already checked out in another worktree`);
-      process.exit(1);
-    }
+    console.log(`🌿 Creating worktree '${name}'`);
 
     try {
-      // Create worktree
-      await gitWorktreeAdd(workspaceRoot, name, branch);
-      console.log(`✓ Created worktree at ./${name}`);
+      // Create worktree WITHOUT creating a new hub branch (stays on main)
+      await gitWorktreeAdd(workspaceRoot, name);
+      console.log(`✓ Created worktree at ./${name} (hub stays on main)`);
 
       // Initialize submodules
       const worktreePath = resolve(workspaceRoot, name);
       await gitSubmoduleUpdate(worktreePath);
       console.log(`✓ Initialized submodules`);
 
-      // Create matching branches in all submodules
-      const created = await gitSubmoduleCreateBranches(worktreePath, branch);
+      // Create matching branches in all submodules using the worktree name
+      const created = await gitSubmoduleCreateBranches(worktreePath, name);
       if (created.length > 0) {
-        console.log(`✓ Created branch '${branch}' in: ${created.join(", ")}`);
+        console.log(`✓ Created branch '${name}' in: ${created.join(", ")}`);
       }
 
       console.log(`\n✨ Worktree '${name}' created successfully!`);
