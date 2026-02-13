@@ -46,7 +46,7 @@ cd ~/workspaces/my-workspace
 jade add <repo-name-or-url> [--name <app-name>]
 ```
 
-Adds a repository as a submodule in the `apps/` directory of the main worktree.
+Adds a repository as a submodule directly in the worktree root.
 
 **Smart URL Resolution:**
 - If you provide a **full URL**, it uses that directly
@@ -69,6 +69,25 @@ jade add https://github.com/other-org/shared-lib --name shared
 # SSH URLs also work
 jade add git@github.com:myorg/private-repo.git
 ```
+
+### Remove a repository submodule
+
+```bash
+jade remove <app-name>
+```
+
+Removes a submodule from the main worktree and updates the config. Future worktrees will not include this submodule.
+
+**Options:**
+- `--workspace <path>` / `-w <path>` - Workspace root (defaults to current directory)
+
+**Example:**
+
+```bash
+jade remove old-app
+```
+
+**Note:** This only removes the submodule from the main worktree. Existing worktrees will still have the submodule directory (though it will be deinitialized). New worktrees created after removal will not include it.
 
 ### Manage worktrees
 
