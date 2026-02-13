@@ -3,14 +3,12 @@ import { getConfigPath } from "./workspace.ts";
 
 export interface JadeConfig {
   version: string;
-  defaultBranch: string;
   apps: string[];
   orgUrl?: string;
 }
 
 const DEFAULT_CONFIG: JadeConfig = {
   version: "1.0",
-  defaultBranch: "main",
   apps: [],
 };
 

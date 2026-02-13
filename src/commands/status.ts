@@ -33,7 +33,6 @@ export default defineCommand({
 
       console.log(`\n🌆 Jade Workspace Status`);
       console.log(`\nWorkspace: ${workspaceRoot}`);
-      console.log(`Default branch: ${config.defaultBranch}`);
       if (config.orgUrl) {
         console.log(`Organization: ${config.orgUrl}`);
       }

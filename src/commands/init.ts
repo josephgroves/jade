@@ -15,11 +15,6 @@ export default defineCommand({
       description: "Workspace directory path",
       required: true,
     },
-    branch: {
-      type: "string",
-      description: "Default branch name",
-      default: "main",
-    },
     orgUrl: {
       type: "string",
       description: "GitHub organization URL",
@@ -54,7 +49,6 @@ export default defineCommand({
     // Write config
     await writeConfig(workspaceRoot, {
       version: "1.0",
-      defaultBranch: args.branch as string,
       apps: [],
       orgUrl: args.orgUrl as string | undefined,
     });

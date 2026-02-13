@@ -31,12 +31,11 @@ jade init <path>
 Creates a new workspace directory structure with `.bare/` and `main/` directories.
 
 **Options:**
-- `--branch <name>` - Default branch name (default: "main")
 - `--orgUrl <url>` - GitHub organization URL
 
 **Example:**
 ```bash
-jade init ~/workspaces/my-workspace --branch main --orgUrl https://github.com/myorg
+jade init ~/workspaces/my-workspace --orgUrl https://github.com/myorg
 cd ~/workspaces/my-workspace
 ```
 
@@ -269,7 +268,6 @@ workspace-root/
 ```json
 {
   "version": "1.0",
-  "defaultBranch": "main",
   "apps": [
     "frontend",
     "backend",
@@ -284,7 +282,6 @@ workspace-root/
 | Field | Type | Description |
 |-------|------|-------------|
 | `version` | string | Config file format version (currently "1.0") |
-| `defaultBranch` | string | Default branch name (informational only) |
 | `apps` | string[] | List of registered app names (auto-updated by `jade add`) |
 | `orgUrl` | string? | Optional GitHub organization URL. **When set, you can use `jade add repo-name` instead of full URLs!** |
 
@@ -310,14 +307,168 @@ The config is automatically updated by jade commands:
 
 ## Development
 
-Run locally without linking:
+### Building
+
+Jade is built with [Bun](https://bun.sh), a fast JavaScript runtime with built-in bundler.
+
+#### Compile to executable
+
+Create a standalone executable:
+
+```bash
+bun run build
+```
+
+This creates a `jade` binary in the project root that can be distributed without requiring Bun.
+
+#### Install locally
+
+To install the compiled binary to your local bin directory:
+
+```bash
+bun run install-global
+```
+
+This places the executable in `~/.local/bin/jade`. Make sure `~/.local/bin` is in your PATH.
+
+#### Uninstall
+
+```bash
+bun run uninstall
+```
+
+#### Run without building
+
+For development, run directly with Bun:
 
 ```bash
 bun run index.ts --help
+bun run index.ts init ./test-workspace
 ```
+
+### Project Structure
+
+```
+jade/
+├── index.ts                 # CLI entry point
+├── src/
+│   ├── commands/           # Command implementations
+│   │   ├── init.ts        # Initialize workspace
+│   │   ├── add.ts         # Add repositories
+│   │   ├── remove.ts      # Remove repositories
+│   │   ├── worktree.ts    # Worktree management
+│   │   ├── checkout.ts    # Branch checkout
+│   │   └── status.ts      # Show workspace status
+│   └── utils/
+│       ├── git.ts         # Git operations wrapper
+│       ├── workspace.ts   # Workspace utilities
+│       └── config.ts      # Config file management
+├── package.json           # Dependencies and scripts
+└── tsconfig.json         # TypeScript configuration
+```
+
+### How It Works
+
+#### Core Concept: Bare Repos + Git Worktrees
+
+Jade uses a combination of bare git repositories and git worktrees to enable working on multiple branches of multiple repositories simultaneously.
+
+**Traditional approach problems:**
+- Cloning the same repo multiple times wastes disk space
+- Switching branches disrupts your workflow
+- Managing multiple repos across branches is manual and error-prone
+
+**Jade's solution:**
+1. Clone each repository **once** as a bare repo (`.bare/<app>/`)
+2. Create git worktrees from each bare repo for different branches
+3. Group worktrees by branch name in directories
+
+#### Git Commands Under the Hood
+
+**When you run `jade add frontend`:**
+```bash
+# 1. Clone bare repository
+git clone --bare https://github.com/myorg/frontend .bare/frontend/
+
+# 2. Create worktree in main/ on default branch
+cd .bare/frontend/
+git worktree add /absolute/path/to/main/frontend main
+
+# 3. For each existing worktree group (e.g., "test/")
+git worktree add /absolute/path/to/test/frontend test
+```
+
+**When you run `jade worktree add feature-x`:**
+```bash
+# For each app in .bare/
+cd .bare/frontend/
+git worktree add /absolute/path/to/feature-x/frontend -b feature-x
+
+cd .bare/backend/
+git worktree add /absolute/path/to/feature-x/backend -b feature-x
+```
+
+#### Conflict Resolution
+
+Jade automatically handles branch conflicts:
+
+**Scenario 1: Branch already checked out**
+```bash
+# If branch 'test' is already in use
+git worktree add path test  # Fails!
+
+# Jade detects the failure and retries with unique name
+git worktree add path -b test-a3f2b1c test  # Success!
+```
+
+**Scenario 2: Hierarchical branch conflicts**
+```bash
+# Can't create 'test' if 'test/something' exists
+git worktree add path -b test  # Fails!
+
+# Jade generates unique name
+git worktree add path -b test-7d8e9f2  # Success!
+```
+
+The unique names use the first 7 characters of the current commit hash, ensuring they're stable and meaningful.
+
+#### Repository Discovery
+
+**Finding workspace root:**
+- Walks up directory tree from current location
+- Looks for `.bare/` directory
+- Stops at filesystem root if not found
+
+**Listing apps:**
+- Reads directory names from `.bare/`
+- Each subdirectory represents one app
+
+**Listing worktree groups:**
+- Reads directories at workspace root
+- Excludes `.bare/`, dotfiles, and `jade.json`
+
+#### Smart Features
+
+**Default branch detection:**
+```typescript
+// 1. Try symbolic ref (what origin/HEAD points to)
+git symbolic-ref refs/remotes/origin/HEAD
+// Returns: refs/remotes/origin/main
+
+// 2. Fallback to common names
+git branch -r | grep -E "(origin/main|origin/master)"
+
+// 3. Last resort: use first branch
+git branch -r | head -n1
+```
+
+**URL resolution:**
+- If input contains `://` or starts with `git@`: use as-is
+- Otherwise, construct from `orgUrl` in config
+- Supports both HTTPS and SSH URLs
 
 ## Requirements
 
-- Bun runtime
-- Git
+- **Bun runtime** - https://bun.sh (v1.0 or higher)
+- **Git** - v2.5 or higher (for worktree support)
 
