@@ -1,0 +1,24 @@
+{
+  "name": "jade",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "jade": "./index.ts"
+  },
+  "scripts": {
+    "jade": "bun run index.ts",
+    "build": "bun build --compile ./index.ts --outfile jade",
+    "install-global": "bun run build && mkdir -p ~/.local/bin && mv jade ~/.local/bin/",
+    "uninstall": "rm -f ~/.local/bin/jade && echo '✓ Removed jade from ~/.local/bin'"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "citty": "^0.2.1"
+  }
+}
