@@ -1,16 +1,28 @@
-import { existsSync, readdirSync } from "fs";
 import { resolve, dirname } from "path";
+import { stat } from "fs/promises";
+
+/**
+ * Check if a path exists (file or directory)
+ */
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Find the workspace root by walking up from cwd looking for .bare directory
  */
-export function findWorkspaceRoot(startPath: string = process.cwd()): string | null {
+export async function findWorkspaceRoot(startPath: string = process.cwd()): Promise<string | null> {
   let current = resolve(startPath);
   const root = resolve("/");
 
   while (current !== root) {
     const barePath = resolve(current, ".bare");
-    if (existsSync(barePath)) {
+    if (await pathExists(barePath)) {
       return current;
     }
     current = dirname(current);
@@ -22,8 +34,8 @@ export function findWorkspaceRoot(startPath: string = process.cwd()): string | n
 /**
  * Validate that a path is a valid workspace (has .bare directory)
  */
-export function isValidWorkspace(path: string): boolean {
-  return existsSync(resolve(path, ".bare"));
+export async function isValidWorkspace(path: string): Promise<boolean> {
+  return await pathExists(resolve(path, ".bare"));
 }
 
 /**
@@ -50,17 +62,31 @@ export function getConfigPath(workspaceRoot: string): string {
 /**
  * List all bare repositories in the .bare directory
  */
-export function listBareRepos(workspaceRoot: string): string[] {
+export async function listBareRepos(workspaceRoot: string): Promise<string[]> {
   const barePath = getBarePath(workspaceRoot);
   
-  if (!existsSync(barePath)) {
+  if (!await pathExists(barePath)) {
     return [];
   }
 
   try {
-    return readdirSync(barePath, { withFileTypes: true })
-      .filter((dirent) => dirent.isDirectory())
-      .map((dirent) => dirent.name);
+    const glob = new Bun.Glob("*");
+    const entries = Array.from(glob.scanSync({ cwd: barePath, onlyFiles: false }));
+    
+    // Filter to only directories
+    const directories: string[] = [];
+    for (const entry of entries) {
+      const fullPath = resolve(barePath, entry);
+      try {
+        const stats = await stat(fullPath);
+        if (stats.isDirectory()) {
+          directories.push(entry);
+        }
+      } catch {
+        // Ignore entries that can't be stat'd
+      }
+    }
+    return directories;
   } catch {
     return [];
   }
@@ -70,20 +96,31 @@ export function listBareRepos(workspaceRoot: string): string[] {
  * List all worktree directories in the workspace root
  * Excludes .bare, jade.json, and dotfiles
  */
-export function listWorktreeDirs(workspaceRoot: string): string[] {
-  if (!existsSync(workspaceRoot)) {
+export async function listWorktreeDirs(workspaceRoot: string): Promise<string[]> {
+  if (!await pathExists(workspaceRoot)) {
     return [];
   }
 
   try {
-    return readdirSync(workspaceRoot, { withFileTypes: true })
-      .filter((dirent) => {
-        if (!dirent.isDirectory()) return false;
-        if (dirent.name.startsWith(".")) return false;
-        if (dirent.name === ".bare") return false;
-        return true;
-      })
-      .map((dirent) => dirent.name);
+    const glob = new Bun.Glob("*");
+    const entries = Array.from(glob.scanSync({ cwd: workspaceRoot, onlyFiles: false }));
+    
+    // Filter to only directories, excluding dotfiles and .bare
+    const directories: string[] = [];
+    for (const entry of entries) {
+      if (entry.startsWith(".") || entry === ".bare") continue;
+      
+      const fullPath = resolve(workspaceRoot, entry);
+      try {
+        const stats = await stat(fullPath);
+        if (stats.isDirectory()) {
+          directories.push(entry);
+        }
+      } catch {
+        // Ignore entries that can't be stat'd
+      }
+    }
+    return directories;
   } catch {
     return [];
   }

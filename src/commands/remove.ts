@@ -1,6 +1,5 @@
 import { defineCommand } from "citty";
 import { resolve } from "path";
-import { existsSync } from "fs";
 import { gitWorktreeRemove, gitRemoveBareRepo, gitWorktreeList } from "../utils/git.ts";
 import { findWorkspaceRoot, getBarePath, listWorktreeDirs, listBareRepos } from "../utils/workspace.ts";
 import { removeAppFromConfig } from "../utils/config.ts";
@@ -26,7 +25,7 @@ export default defineCommand({
     // Find workspace root
     const workspaceRoot = args.workspace
       ? resolve(args.workspace as string)
-      : findWorkspaceRoot();
+      : await findWorkspaceRoot();
 
     if (!workspaceRoot) {
       console.error("❌ Not in a jade workspace. Run 'jade init' first.");
@@ -38,7 +37,7 @@ export default defineCommand({
     const bareRepoPath = resolve(barePath, appName);
 
     // Check if app exists
-    const bareRepos = listBareRepos(workspaceRoot);
+    const bareRepos = await listBareRepos(workspaceRoot);
     if (!bareRepos.includes(appName)) {
       console.error(`❌ App '${appName}' not found in .bare/`);
       if (bareRepos.length > 0) {
@@ -54,7 +53,7 @@ export default defineCommand({
 
     try {
       // Get list of worktree directories
-      const worktreeDirs = listWorktreeDirs(workspaceRoot);
+      const worktreeDirs = await listWorktreeDirs(workspaceRoot);
 
       // Remove worktrees from all directories
       const worktrees = await gitWorktreeList(bareRepoPath);

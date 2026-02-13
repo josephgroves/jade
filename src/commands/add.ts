@@ -1,9 +1,19 @@
 import { defineCommand } from "citty";
 import { resolve } from "path";
-import { existsSync, mkdirSync } from "fs";
-import { gitCloneBare, gitWorktreeAdd } from "../utils/git.ts";
+import { stat } from "fs/promises";
+import { $ } from "bun";
+import { gitCloneBare, gitWorktreeAdd, gitGetDefaultBranch } from "../utils/git.ts";
 import { findWorkspaceRoot, getBarePath, listWorktreeDirs } from "../utils/workspace.ts";
 import { addAppToConfig, readConfig } from "../utils/config.ts";
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export default defineCommand({
   meta: {
@@ -20,6 +30,11 @@ export default defineCommand({
       type: "string",
       description: "App name (defaults to repo name)",
     },
+    branch: {
+      type: "string",
+      alias: "b",
+      description: "Default branch to use for main worktree (auto-detected if not specified)",
+    },
     workspace: {
       type: "string",
       alias: "w",
@@ -30,7 +45,7 @@ export default defineCommand({
     // Find workspace root
     const workspaceRoot = args.workspace
       ? resolve(args.workspace as string)
-      : findWorkspaceRoot();
+      : await findWorkspaceRoot();
 
     if (!workspaceRoot) {
       console.error("❌ Not in a jade workspace. Run 'jade init' first.");
@@ -91,7 +106,7 @@ export default defineCommand({
     console.log(`📦 Adding ${appName} from ${url}`);
 
     // Check if app already exists
-    if (existsSync(bareRepoPath)) {
+    if (await pathExists(bareRepoPath)) {
       console.error(`❌ App '${appName}' already exists in .bare/`);
       process.exit(1);
     }
@@ -101,19 +116,43 @@ export default defineCommand({
       await gitCloneBare(url, bareRepoPath);
       console.log(`✓ Cloned bare repository to .bare/${appName}`);
 
+      // Determine default branch for main worktree
+      const defaultBranch = args.branch as string | undefined;
+      let detectedBranch: string | undefined;
+      
+      if (!defaultBranch) {
+        try {
+          detectedBranch = await gitGetDefaultBranch(bareRepoPath);
+          console.log(`ℹ️  Detected default branch: ${detectedBranch}`);
+        } catch (error) {
+          console.error(`⚠️  Could not detect default branch: ${error}`);
+          console.error(`   Use --branch flag to specify: jade add ${input} --branch <branch-name>`);
+          throw error;
+        }
+      }
+
       // Get all worktree directories
-      const worktreeDirs = listWorktreeDirs(workspaceRoot);
+      const worktreeDirs = await listWorktreeDirs(workspaceRoot);
 
       // Create worktrees in each directory
       for (const dirName of worktreeDirs) {
         const worktreePath = resolve(workspaceRoot, dirName, appName);
         
+        // Skip if the worktree already exists
+        if (await pathExists(worktreePath)) {
+          continue;
+        }
+
         // Create parent directory if it doesn't exist
-        mkdirSync(resolve(workspaceRoot, dirName), { recursive: true });
+        const worktreeDirPath = resolve(workspaceRoot, dirName);
+        if (!await pathExists(worktreeDirPath)) {
+          await $`mkdir -p ${worktreeDirPath}`;
+        }
 
         if (dirName === "main") {
-          // For main, use the repo's default branch
-          const actualBranch = await gitWorktreeAdd(bareRepoPath, worktreePath);
+          // For main, use the specified or detected default branch
+          const branchToUse = defaultBranch || detectedBranch;
+          const actualBranch = await gitWorktreeAdd(bareRepoPath, worktreePath, branchToUse);
           console.log(`✓ Created worktree in main/${appName} (branch: ${actualBranch})`);
         } else {
           // For other directories, use the directory name as branch (create or checkout)

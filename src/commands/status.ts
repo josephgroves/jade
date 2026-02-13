@@ -1,9 +1,18 @@
 import { defineCommand } from "citty";
 import { resolve } from "path";
-import { existsSync } from "fs";
+import { stat } from "fs/promises";
 import { gitCurrentBranch } from "../utils/git.ts";
 import { findWorkspaceRoot, listBareRepos, listWorktreeDirs } from "../utils/workspace.ts";
 import { readConfig } from "../utils/config.ts";
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export default defineCommand({
   meta: {
@@ -20,7 +29,7 @@ export default defineCommand({
   async run({ args }) {
     const workspaceRoot = args.workspace
       ? resolve(args.workspace as string)
-      : findWorkspaceRoot();
+      : await findWorkspaceRoot();
 
     if (!workspaceRoot) {
       console.error("❌ Not in a jade workspace. Run 'jade init' first.");
@@ -38,8 +47,8 @@ export default defineCommand({
       }
 
       // List worktree groups
-      const worktreeDirs = listWorktreeDirs(workspaceRoot);
-      const bareRepos = listBareRepos(workspaceRoot);
+      const worktreeDirs = await listWorktreeDirs(workspaceRoot);
+      const bareRepos = await listBareRepos(workspaceRoot);
 
       console.log(`\n📂 Worktree Groups:`);
       if (worktreeDirs.length === 0) {
@@ -61,7 +70,7 @@ export default defineCommand({
           // Show branches in each worktree group
           for (const dirName of worktreeDirs) {
             const appPath = resolve(workspaceRoot, dirName, appName);
-            if (existsSync(appPath)) {
+            if (await pathExists(appPath)) {
               try {
                 const branch = await gitCurrentBranch(appPath);
                 console.log(`      ${dirName.padEnd(20)} → ${branch}`);

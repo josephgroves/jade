@@ -7,6 +7,7 @@
     "jade": "./index.ts"
   },
   "scripts": {
+    "test": "bun test",
     "jade": "bun run index.ts",
     "build": "bun build --compile ./index.ts --outfile jade",
     "install-global": "bun run build && mkdir -p ~/.local/bin && mv jade ~/.local/bin/",

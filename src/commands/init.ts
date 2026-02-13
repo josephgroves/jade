@@ -1,8 +1,18 @@
 import { defineCommand } from "citty";
 import { resolve } from "path";
-import { existsSync, mkdirSync } from "fs";
+import { stat } from "fs/promises";
+import { $ } from "bun";
 import { writeConfig } from "../utils/config.ts";
 import { getBarePath, getMainWorktreePath } from "../utils/workspace.ts";
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export default defineCommand({
   meta: {
@@ -28,22 +38,22 @@ export default defineCommand({
     console.log(`🌆 Initializing workspace at: ${workspaceRoot}`);
 
     // Create workspace directory if it doesn't exist
-    if (!existsSync(workspaceRoot)) {
-      mkdirSync(workspaceRoot, { recursive: true });
+    if (!await pathExists(workspaceRoot)) {
+      await $`mkdir -p ${workspaceRoot}`;
       console.log(`✓ Created workspace directory`);
     } else {
-      if (existsSync(barePath)) {
+      if (await pathExists(barePath)) {
         console.error(`❌ Workspace already initialized at ${workspaceRoot}`);
         process.exit(1);
       }
     }
 
     // Create .bare directory
-    mkdirSync(barePath, { recursive: true });
+    await $`mkdir -p ${barePath}`;
     console.log(`✓ Created .bare/ directory`);
 
     // Create main worktree directory
-    mkdirSync(mainPath, { recursive: true });
+    await $`mkdir -p ${mainPath}`;
     console.log(`✓ Created main/ directory`);
 
     // Write config

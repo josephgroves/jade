@@ -1,4 +1,3 @@
-import { existsSync } from "fs";
 import { getConfigPath } from "./workspace.ts";
 
 export interface JadeConfig {
@@ -18,7 +17,7 @@ const DEFAULT_CONFIG: JadeConfig = {
 export async function readConfig(workspaceRoot: string): Promise<JadeConfig> {
   const configPath = getConfigPath(workspaceRoot);
 
-  if (!existsSync(configPath)) {
+  if (!await Bun.file(configPath).exists()) {
     return { ...DEFAULT_CONFIG };
   }
 

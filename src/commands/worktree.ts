@@ -1,6 +1,7 @@
 import { defineCommand } from "citty";
 import { resolve } from "path";
-import { existsSync, mkdirSync, rmSync } from "fs";
+import { stat } from "fs/promises";
+import { $ } from "bun";
 import {
   gitWorktreeAdd,
   gitWorktreeRemove,
@@ -8,6 +9,15 @@ import {
   gitDeleteBranch,
 } from "../utils/git.ts";
 import { findWorkspaceRoot, getBarePath, listBareRepos, listWorktreeDirs } from "../utils/workspace.ts";
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 const addCommand = defineCommand({
   meta: {
@@ -29,7 +39,7 @@ const addCommand = defineCommand({
   async run({ args }) {
     const workspaceRoot = args.workspace
       ? resolve(args.workspace as string)
-      : findWorkspaceRoot();
+      : await findWorkspaceRoot();
 
     if (!workspaceRoot) {
       console.error("❌ Not in a jade workspace. Run 'jade init' first.");
@@ -39,7 +49,7 @@ const addCommand = defineCommand({
     const name = args.name as string;
     const worktreeDirPath = resolve(workspaceRoot, name);
 
-    if (existsSync(worktreeDirPath)) {
+    if (await pathExists(worktreeDirPath)) {
       console.error(`❌ Worktree directory '${name}' already exists`);
       process.exit(1);
     }
@@ -48,10 +58,10 @@ const addCommand = defineCommand({
 
     try {
       // Create worktree directory
-      mkdirSync(worktreeDirPath, { recursive: true });
+      await $`mkdir -p ${worktreeDirPath}`;
 
       // Get all bare repos
-      const bareRepos = listBareRepos(workspaceRoot);
+      const bareRepos = await listBareRepos(workspaceRoot);
       const barePath = getBarePath(workspaceRoot);
 
       if (bareRepos.length === 0) {
@@ -114,7 +124,7 @@ const listCommand = defineCommand({
   async run({ args }) {
     const workspaceRoot = args.workspace
       ? resolve(args.workspace as string)
-      : findWorkspaceRoot();
+      : await findWorkspaceRoot();
 
     if (!workspaceRoot) {
       console.error("❌ Not in a jade workspace. Run 'jade init' first.");
@@ -122,8 +132,8 @@ const listCommand = defineCommand({
     }
 
     try {
-      const worktreeDirs = listWorktreeDirs(workspaceRoot);
-      const bareRepos = listBareRepos(workspaceRoot);
+      const worktreeDirs = await listWorktreeDirs(workspaceRoot);
+      const bareRepos = await listBareRepos(workspaceRoot);
 
       if (worktreeDirs.length === 0) {
         console.log("No worktree groups found.");
@@ -138,7 +148,7 @@ const listCommand = defineCommand({
         // List apps in this worktree
         for (const appName of bareRepos) {
           const appPath = resolve(workspaceRoot, dirName, appName);
-          if (existsSync(appPath)) {
+          if (await pathExists(appPath)) {
             try {
               const branch = await gitCurrentBranch(appPath);
               console.log(`    - ${appName.padEnd(30)} (${branch})`);
@@ -188,7 +198,7 @@ const removeCommand = defineCommand({
   async run({ args }) {
     const workspaceRoot = args.workspace
       ? resolve(args.workspace as string)
-      : findWorkspaceRoot();
+      : await findWorkspaceRoot();
 
     if (!workspaceRoot) {
       console.error("❌ Not in a jade workspace. Run 'jade init' first.");
@@ -206,7 +216,7 @@ const removeCommand = defineCommand({
 
     const worktreeDirPath = resolve(workspaceRoot, name);
 
-    if (!existsSync(worktreeDirPath)) {
+    if (!await pathExists(worktreeDirPath)) {
       console.error(`❌ Worktree '${name}' not found`);
       process.exit(1);
     }
@@ -214,7 +224,7 @@ const removeCommand = defineCommand({
     console.log(`🗑️  Removing worktree group '${name}'`);
 
     try {
-      const bareRepos = listBareRepos(workspaceRoot);
+      const bareRepos = await listBareRepos(workspaceRoot);
       const barePath = getBarePath(workspaceRoot);
 
       // Remove worktrees from each app's bare repo
@@ -222,7 +232,7 @@ const removeCommand = defineCommand({
         const bareRepoPath = resolve(barePath, appName);
         const appWorktreePath = resolve(worktreeDirPath, appName);
 
-        if (existsSync(appWorktreePath)) {
+        if (await pathExists(appWorktreePath)) {
           try {
             await gitWorktreeRemove(bareRepoPath, appWorktreePath);
             console.log(`✓ Removed worktree for ${appName}`);
@@ -233,7 +243,7 @@ const removeCommand = defineCommand({
       }
 
       // Remove the directory
-      rmSync(worktreeDirPath, { recursive: true, force: true });
+      await $`rm -rf ${worktreeDirPath}`;
       console.log(`✓ Removed directory ${name}/`);
 
       // Delete branches if requested
@@ -244,7 +254,7 @@ const removeCommand = defineCommand({
         for (const appName of bareRepos) {
           const mainAppPath = resolve(workspaceRoot, "main", appName);
           
-          if (existsSync(mainAppPath)) {
+          if (await pathExists(mainAppPath)) {
             try {
               await gitDeleteBranch(mainAppPath, name, force);
               deleted.push(appName);
@@ -273,7 +283,7 @@ const removeCommand = defineCommand({
   },
 });
 
-export default defineCommand({
+const worktreeCommand = defineCommand({
   meta: {
     name: "worktree",
     description: "Manage worktree groups",
@@ -284,3 +294,6 @@ export default defineCommand({
     remove: removeCommand,
   },
 });
+
+export { addCommand, listCommand, removeCommand };
+export default worktreeCommand;

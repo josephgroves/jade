@@ -1,8 +1,17 @@
 import { defineCommand } from "citty";
 import { resolve } from "path";
-import { existsSync } from "fs";
+import { stat } from "fs/promises";
 import { gitCheckout } from "../utils/git.ts";
 import { findWorkspaceRoot } from "../utils/workspace.ts";
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export default defineCommand({
   meta: {
@@ -34,7 +43,7 @@ export default defineCommand({
   async run({ args }) {
     const workspaceRoot = args.workspace
       ? resolve(args.workspace as string)
-      : findWorkspaceRoot();
+      : await findWorkspaceRoot();
 
     if (!workspaceRoot) {
       console.error("❌ Not in a jade workspace. Run 'jade init' first.");
@@ -53,7 +62,7 @@ export default defineCommand({
       targetPath = resolve(process.cwd(), app);
       targetDescription = `app '${app}'`;
 
-      if (!existsSync(targetPath)) {
+      if (!await pathExists(targetPath)) {
         console.error(`❌ App '${app}' not found in current directory`);
         process.exit(1);
       }

@@ -32,11 +32,22 @@ export async function gitGetDefaultBranch(bareRepoPath: string): Promise<string>
   } catch {
     // Fallback: try common default branch names
     const branches = await $`git branch -r`.cwd(bareRepoPath).text();
+    
+    // Check for common default branch names in order of preference
     if (branches.includes("origin/main")) return "main";
     if (branches.includes("origin/master")) return "master";
+    if (branches.includes("origin/develop")) return "develop";
+    if (branches.includes("origin/trunk")) return "trunk";
+    
     // Last resort: use first branch
     const firstBranch = branches.trim().split("\n")[0];
-    return firstBranch?.replace("origin/", "").trim() || "main";
+    const branchName = firstBranch?.replace(/^\s*origin\//, "").trim();
+    
+    if (!branchName) {
+      throw new Error("No branches found in repository");
+    }
+    
+    return branchName;
   }
 }
 
