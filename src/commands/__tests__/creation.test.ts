@@ -7,11 +7,11 @@
  */
 import { describe, test, expect, afterEach, beforeEach } from "bun:test";
 import { join, resolve } from "path";
-import { stat } from "fs/promises";
+import { stat, mkdir } from "fs/promises";
 import { createMockGitBackend } from "../../test/mock-git-backend.ts";
-import { createTempDir } from "../../test/helpers.ts";
+import { createTempDir, expectsExit } from "../../test/helpers.ts";
 import { makeAddCommand } from "../add.ts";
-import { makeWorktreeAddCommand, makeWorktreeRemoveCommand } from "../worktree.ts";
+import { makeWorktreeAddCommand } from "../worktree.ts";
 import initCommand from "../init.ts";
 import { readConfig, getAppNames } from "../../utils/config.ts";
 import { isValidWorkspace } from "../../utils/workspace.ts";
@@ -31,9 +31,6 @@ async function pathExists(p: string): Promise<boolean> {
 
 describe("init command — workspace creation", () => {
   let tempDir: TempDir;
-  const exitMock = ((code?: number) => {
-    throw new Error(`EXIT:${code ?? 0}`);
-  }) as (code?: number) => never;
 
   afterEach(async () => {
     if (tempDir) await tempDir.cleanup();
@@ -43,13 +40,7 @@ describe("init command — workspace creation", () => {
     tempDir = await createTempDir();
     const workspacePath = join(tempDir.path, "ws");
 
-    const origExit = process.exit;
-    process.exit = exitMock;
-    try {
-      await initCommand.run!({ args: { path: workspacePath } } as any);
-    } finally {
-      process.exit = origExit;
-    }
+    await initCommand.run!({ args: { path: workspacePath } } as any);
 
     expect(await isValidWorkspace(workspacePath)).toBe(true);
     expect(await pathExists(join(workspacePath, "main"))).toBe(true);
@@ -60,13 +51,7 @@ describe("init command — workspace creation", () => {
     tempDir = await createTempDir();
     const workspacePath = join(tempDir.path, "ws");
 
-    const origExit = process.exit;
-    process.exit = exitMock;
-    try {
-      await initCommand.run!({ args: { path: workspacePath } } as any);
-    } finally {
-      process.exit = origExit;
-    }
+    await initCommand.run!({ args: { path: workspacePath } } as any);
 
     const config = await readConfig(workspacePath);
     expect(config.version).toBe("1.0");
@@ -77,15 +62,9 @@ describe("init command — workspace creation", () => {
     tempDir = await createTempDir();
     const workspacePath = join(tempDir.path, "ws");
 
-    const origExit = process.exit;
-    process.exit = exitMock;
-    try {
-      await initCommand.run!({
-        args: { path: workspacePath, orgUrl: "https://github.com/testorg" },
-      } as any);
-    } finally {
-      process.exit = origExit;
-    }
+    await initCommand.run!({
+      args: { path: workspacePath, orgUrl: "https://github.com/testorg" },
+    } as any);
 
     const config = await readConfig(workspacePath);
     expect(config.orgUrl).toBe("https://github.com/testorg");
@@ -95,27 +74,11 @@ describe("init command — workspace creation", () => {
     tempDir = await createTempDir();
     const workspacePath = join(tempDir.path, "ws");
 
-    // First init succeeds
-    const origExit = process.exit;
-    process.exit = exitMock;
-    try {
-      await initCommand.run!({ args: { path: workspacePath } } as any);
-    } finally {
-      process.exit = origExit;
-    }
+    await initCommand.run!({ args: { path: workspacePath } } as any);
 
-    // Second init should exit
-    let exited = false;
-    process.exit = exitMock;
-    try {
-      await initCommand.run!({ args: { path: workspacePath } } as any);
-    } catch (e: any) {
-      if (e?.message === "EXIT:1") exited = true;
-    } finally {
-      process.exit = origExit;
-    }
-
-    expect(exited).toBe(true);
+    await expectsExit(() =>
+      initCommand.run!({ args: { path: workspacePath } } as any)
+    );
   });
 });
 
@@ -123,9 +86,6 @@ describe("init command — workspace creation", () => {
 
 describe("add command — app creation with mock git", () => {
   let tempDir: TempDir;
-  const exitMock = ((code?: number) => {
-    throw new Error(`EXIT:${code ?? 0}`);
-  }) as (code?: number) => never;
 
   beforeEach(async () => {
     tempDir = await createTempDir();
@@ -137,13 +97,7 @@ describe("add command — app creation with mock git", () => {
 
   async function initWorkspace(name = "ws") {
     const workspacePath = join(tempDir.path, name);
-    const origExit = process.exit;
-    process.exit = exitMock;
-    try {
-      await initCommand.run!({ args: { path: workspacePath } } as any);
-    } finally {
-      process.exit = origExit;
-    }
+    await initCommand.run!({ args: { path: workspacePath } } as any);
     return workspacePath;
   }
 
@@ -206,41 +160,22 @@ describe("add command — app creation with mock git", () => {
   test("creates worktrees in all existing worktree groups", async () => {
     const workspacePath = await initWorkspace();
     const { git } = createMockGitBackend();
-    const addWorktreeCmd = makeWorktreeAddCommand(git);
-
-    // First add the app
     const addCmd = makeAddCommand(git);
+
     await addCmd.run!({
       args: { repoNameOrUrl: "https://github.com/org/app", name: "app", workspace: workspacePath },
     } as any);
 
-    // Then add a worktree group before adding a second app
-    const { git: git2 } = createMockGitBackend();
-    const addCmd2 = makeAddCommand(git2);
-    const addWorktreeCmd2 = makeWorktreeAddCommand(git2);
-
-    // Re-init so second app sees the existing worktree group
-    // Use the same git instance for both add steps
-    const { git: sharedGit } = createMockGitBackend();
-    const sharedAddCmd = makeAddCommand(sharedGit);
-    const sharedAddWorktreeCmd = makeWorktreeAddCommand(sharedGit);
-
-    // Fresh workspace for this test
-    const ws2 = await initWorkspace("ws2");
-    await sharedAddCmd.run!({
-      args: { repoNameOrUrl: "https://github.com/org/app", name: "app", workspace: ws2 },
-    } as any);
     // Manually create a second worktree group dir so listWorktreeDirs picks it up
-    const { mkdir } = await import("fs/promises");
-    await mkdir(join(ws2, "feat-x"), { recursive: true });
+    await mkdir(join(workspacePath, "feat-x"), { recursive: true });
 
-    // Add a second app — should create worktree in both main/ and feat-x/
-    await sharedAddCmd.run!({
-      args: { repoNameOrUrl: "https://github.com/org/app2", name: "app2", workspace: ws2 },
+    // Add a second app — should create worktrees in both main/ and feat-x/
+    await addCmd.run!({
+      args: { repoNameOrUrl: "https://github.com/org/app2", name: "app2", workspace: workspacePath },
     } as any);
 
-    expect(await pathExists(join(ws2, "main", "app2"))).toBe(true);
-    expect(await pathExists(join(ws2, "feat-x", "app2"))).toBe(true);
+    expect(await pathExists(join(workspacePath, "main", "app2"))).toBe(true);
+    expect(await pathExists(join(workspacePath, "feat-x", "app2"))).toBe(true);
   });
 
   test("exits when app already exists in .bare/", async () => {
@@ -252,20 +187,11 @@ describe("add command — app creation with mock git", () => {
       args: { repoNameOrUrl: "https://github.com/org/app", name: "app", workspace: workspacePath },
     } as any);
 
-    const origExit = process.exit;
-    process.exit = exitMock;
-    let exited = false;
-    try {
-      await addCmd.run!({
+    await expectsExit(() =>
+      addCmd.run!({
         args: { repoNameOrUrl: "https://github.com/org/app", name: "app", workspace: workspacePath },
-      } as any);
-    } catch (e: any) {
-      if (e?.message === "EXIT:1") exited = true;
-    } finally {
-      process.exit = origExit;
-    }
-
-    expect(exited).toBe(true);
+      } as any)
+    );
   });
 });
 
@@ -273,9 +199,6 @@ describe("add command — app creation with mock git", () => {
 
 describe("worktree add command — group creation with mock git", () => {
   let tempDir: TempDir;
-  const exitMock = ((code?: number) => {
-    throw new Error(`EXIT:${code ?? 0}`);
-  }) as (code?: number) => never;
 
   beforeEach(async () => {
     tempDir = await createTempDir();
@@ -287,32 +210,22 @@ describe("worktree add command — group creation with mock git", () => {
 
   async function makeWorkspaceWithApp(wsName = "ws", appName = "app") {
     const workspacePath = join(tempDir.path, wsName);
-    const origExit = process.exit;
-    process.exit = exitMock;
-    try {
-      await initCommand.run!({ args: { path: workspacePath } } as any);
-    } finally {
-      process.exit = origExit;
-    }
-
+    await initCommand.run!({ args: { path: workspacePath } } as any);
     const { git } = createMockGitBackend();
     const addCmd = makeAddCommand(git);
     await addCmd.run!({
-      args: { repoNameOrUrl: `https://github.com/org/${appName}`, name: appName, workspace: workspacePath },
+      args: {
+        repoNameOrUrl: `https://github.com/org/${appName}`,
+        name: appName,
+        workspace: workspacePath,
+      },
     } as any);
-
     return { workspacePath, git };
   }
 
   test("creates empty worktree group when no apps exist", async () => {
     const workspacePath = join(tempDir.path, "ws");
-    const origExit = process.exit;
-    process.exit = exitMock;
-    try {
-      await initCommand.run!({ args: { path: workspacePath } } as any);
-    } finally {
-      process.exit = origExit;
-    }
+    await initCommand.run!({ args: { path: workspacePath } } as any);
 
     const { git } = createMockGitBackend();
     const worktreeAddCmd = makeWorktreeAddCommand(git);
@@ -337,13 +250,7 @@ describe("worktree add command — group creation with mock git", () => {
 
   test("creates worktrees for multiple apps", async () => {
     const workspacePath = join(tempDir.path, "ws");
-    const origExit = process.exit;
-    process.exit = exitMock;
-    try {
-      await initCommand.run!({ args: { path: workspacePath } } as any);
-    } finally {
-      process.exit = origExit;
-    }
+    await initCommand.run!({ args: { path: workspacePath } } as any);
 
     const { git } = createMockGitBackend();
     const addCmd = makeAddCommand(git);
@@ -372,31 +279,16 @@ describe("worktree add command — group creation with mock git", () => {
       args: { name: "feat-dup", workspace: workspacePath },
     } as any);
 
-    const origExit = process.exit;
-    process.exit = exitMock;
-    let exited = false;
-    try {
-      await worktreeAddCmd.run!({
+    await expectsExit(() =>
+      worktreeAddCmd.run!({
         args: { name: "feat-dup", workspace: workspacePath },
-      } as any);
-    } catch (e: any) {
-      if (e?.message === "EXIT:1") exited = true;
-    } finally {
-      process.exit = origExit;
-    }
-
-    expect(exited).toBe(true);
+      } as any)
+    );
   });
 
   test("branch conflict creates worktree with resolved branch name", async () => {
     const workspacePath = join(tempDir.path, "ws");
-    const origExit = process.exit;
-    process.exit = exitMock;
-    try {
-      await initCommand.run!({ args: { path: workspacePath } } as any);
-    } finally {
-      process.exit = origExit;
-    }
+    await initCommand.run!({ args: { path: workspacePath } } as any);
 
     const { git, getState } = createMockGitBackend();
     const addCmd = makeAddCommand(git);
@@ -411,15 +303,12 @@ describe("worktree add command — group creation with mock git", () => {
       args: { name: "feat-conflict", workspace: workspacePath },
     } as any);
 
-    // Manually mark the branch as already checked out in the mock state
-    // so the second worktree on the same branch triggers conflict resolution
     const bareRepoPath = resolve(workspacePath, ".bare", "app");
     const state = getState(bareRepoPath);
     expect(state).toBeDefined();
 
-    // The first group's worktree path
+    // Verify the worktree was tracked with the correct branch
     const firstWorktreePath = resolve(workspacePath, "feat-conflict", "app");
-    // Verify it was tracked
     expect(state!.worktrees.has(firstWorktreePath)).toBe(true);
     expect(state!.worktrees.get(firstWorktreePath)).toBe("feat-conflict");
   });
@@ -429,9 +318,6 @@ describe("worktree add command — group creation with mock git", () => {
 
 describe("creation cross-flow: init -> add app -> worktree add", () => {
   let tempDir: TempDir;
-  const exitMock = ((code?: number) => {
-    throw new Error(`EXIT:${code ?? 0}`);
-  }) as (code?: number) => never;
 
   afterEach(async () => {
     if (tempDir) await tempDir.cleanup();
@@ -441,20 +327,12 @@ describe("creation cross-flow: init -> add app -> worktree add", () => {
     tempDir = await createTempDir();
     const workspacePath = join(tempDir.path, "fullflow");
 
-    // 1. Init
-    const origExit = process.exit;
-    process.exit = exitMock;
-    try {
-      await initCommand.run!({ args: { path: workspacePath } } as any);
-    } finally {
-      process.exit = origExit;
-    }
+    await initCommand.run!({ args: { path: workspacePath } } as any);
 
     const { git } = createMockGitBackend();
     const addCmd = makeAddCommand(git);
     const worktreeAddCmd = makeWorktreeAddCommand(git);
 
-    // 2. Add two apps
     await addCmd.run!({
       args: { repoNameOrUrl: "https://github.com/org/frontend", name: "frontend", workspace: workspacePath },
     } as any);
@@ -462,21 +340,16 @@ describe("creation cross-flow: init -> add app -> worktree add", () => {
       args: { repoNameOrUrl: "https://github.com/org/backend", name: "backend", workspace: workspacePath },
     } as any);
 
-    // 3. Create a feature worktree group
     await worktreeAddCmd.run!({
       args: { name: "feat-auth", workspace: workspacePath },
     } as any);
 
-    // Verify config
     const config = await readConfig(workspacePath);
     expect(getAppNames(config)).toContain("frontend");
     expect(getAppNames(config)).toContain("backend");
 
-    // Verify main/ worktrees
     expect(await pathExists(join(workspacePath, "main", "frontend"))).toBe(true);
     expect(await pathExists(join(workspacePath, "main", "backend"))).toBe(true);
-
-    // Verify feat-auth/ worktrees
     expect(await pathExists(join(workspacePath, "feat-auth", "frontend"))).toBe(true);
     expect(await pathExists(join(workspacePath, "feat-auth", "backend"))).toBe(true);
   });
@@ -485,13 +358,7 @@ describe("creation cross-flow: init -> add app -> worktree add", () => {
     tempDir = await createTempDir();
     const workspacePath = join(tempDir.path, "callflow");
 
-    const origExit = process.exit;
-    process.exit = exitMock;
-    try {
-      await initCommand.run!({ args: { path: workspacePath } } as any);
-    } finally {
-      process.exit = origExit;
-    }
+    await initCommand.run!({ args: { path: workspacePath } } as any);
 
     const { git, calls } = createMockGitBackend();
     const addCmd = makeAddCommand(git);

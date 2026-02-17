@@ -5,6 +5,7 @@ import {
   createTempDir,
   createLocalGitRepo,
   createTestWorkspace,
+  withCapturedConsole,
 } from "../../test/helpers.ts";
 import addRepoCommand from "../add.ts";
 import { addCommand as worktreeAddCommand } from "../worktree.ts";
@@ -21,17 +22,9 @@ describe("status command", () => {
     const workspacePath = join(tempDir.path, "ws");
     await createTestWorkspace(workspacePath);
 
-    const logs: string[] = [];
-    const origLog = console.log;
-    console.log = (...args: string[]) => {
-      logs.push(args.join(" "));
-    };
-
-    await statusCommand.run!({
-      args: { workspace: workspacePath },
-    } as any);
-
-    console.log = origLog;
+    const logs = await withCapturedConsole(() =>
+      statusCommand.run!({ args: { workspace: workspacePath } } as any)
+    );
 
     expect(logs.some((l) => l.includes("Workspace:"))).toBe(true);
     expect(logs.some((l) => l.includes("Worktree Groups"))).toBe(true);
@@ -48,34 +41,18 @@ describe("status command", () => {
     await createLocalGitRepo(sourceRepo2);
 
     await addRepoCommand.run!({
-      args: {
-        repoNameOrUrl: sourceRepo1,
-        name: "app1",
-        workspace: workspacePath,
-      },
+      args: { repoNameOrUrl: sourceRepo1, name: "app1", workspace: workspacePath },
     } as any);
     await addRepoCommand.run!({
-      args: {
-        repoNameOrUrl: sourceRepo2,
-        name: "app2",
-        workspace: workspacePath,
-      },
+      args: { repoNameOrUrl: sourceRepo2, name: "app2", workspace: workspacePath },
     } as any);
     await worktreeAddCommand.run!({
       args: { name: "feat-auth", workspace: workspacePath },
     } as any);
 
-    const logs: string[] = [];
-    const origLog = console.log;
-    console.log = (...args: string[]) => {
-      logs.push(args.join(" "));
-    };
-
-    await statusCommand.run!({
-      args: { workspace: workspacePath },
-    } as any);
-
-    console.log = origLog;
+    const logs = await withCapturedConsole(() =>
+      statusCommand.run!({ args: { workspace: workspacePath } } as any)
+    );
 
     const output = logs.join("\n");
     expect(output).toContain("app1");

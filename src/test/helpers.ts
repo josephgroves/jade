@@ -2,6 +2,7 @@ import { mkdtemp, mkdir, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { $ } from "bun";
+import { expect } from "bun:test";
 import { gitCloneBare } from "../utils/git.ts";
 
 export interface TempDir {
@@ -58,4 +59,51 @@ export async function createBareClone(
 ): Promise<string> {
   await gitCloneBare(sourceRepo, destPath);
   return destPath;
+}
+
+/**
+ * Capture console.log output for the duration of the async callback.
+ * Returns the lines that were logged.
+ *
+ * Usage:
+ *   const logs = await withCapturedConsole(() => command.run!(...));
+ *   expect(logs).toContain("some output");
+ */
+export async function withCapturedConsole(fn: () => Promise<void>): Promise<string[]> {
+  const logs: string[] = [];
+  const origLog = console.log;
+  console.log = (...args: unknown[]) => {
+    logs.push(args.map(String).join(" "));
+  };
+  try {
+    await fn();
+  } finally {
+    console.log = origLog;
+  }
+  return logs;
+}
+
+/**
+ * Assert that the async callback calls process.exit with the given code (default 1).
+ * Handles save/mock/restore automatically so tests stay focused on intent.
+ *
+ * Usage:
+ *   await expectsExit(() => command.run!({ args: { name: "bad" } } as any));
+ *   await expectsExit(() => command.run!(...), 0); // expect exit(0)
+ */
+export async function expectsExit(fn: () => Promise<void>, expectedCode = 1): Promise<void> {
+  const origExit = process.exit;
+  let exitCode: number | undefined;
+  process.exit = ((code?: number) => {
+    exitCode = code ?? 0;
+    throw new Error(`EXIT:${exitCode}`);
+  }) as (code?: number) => never;
+  try {
+    await fn();
+  } catch {
+    // expected — process.exit throws in mock
+  } finally {
+    process.exit = origExit;
+  }
+  expect(exitCode).toBe(expectedCode);
 }

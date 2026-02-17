@@ -7,14 +7,12 @@ import {
   createTempDir,
   createLocalGitRepo,
   createTestWorkspace,
+  expectsExit,
 } from "../../test/helpers.ts";
 import addCommand from "../add.ts";
 
 describe("remove command", () => {
   let tempDir: Awaited<ReturnType<typeof createTempDir>>;
-  const exitMock = ((code?: number) => {
-    throw new Error(`EXIT:${code ?? 0}`);
-  }) as (code?: number) => never;
 
   afterEach(async () => {
     if (tempDir) await tempDir.cleanup();
@@ -28,11 +26,7 @@ describe("remove command", () => {
     await createLocalGitRepo(sourceRepo);
 
     await addCommand.run!({
-      args: {
-        repoNameOrUrl: sourceRepo,
-        name: "toremove",
-        workspace: workspacePath,
-      },
+      args: { repoNameOrUrl: sourceRepo, name: "toremove", workspace: workspacePath },
     } as any);
 
     await removeCommand.run!({
@@ -50,19 +44,8 @@ describe("remove command", () => {
     const workspacePath = join(tempDir.path, "ws");
     await createTestWorkspace(workspacePath);
 
-    const originalExit = process.exit;
-    process.exit = exitMock;
-
-    let exited = false;
-    try {
-      await removeCommand.run!({
-        args: { name: "nonexistent", workspace: workspacePath },
-      } as any);
-    } catch (e: any) {
-      if (e?.message === "EXIT:1") exited = true;
-    } finally {
-      process.exit = originalExit;
-    }
-    expect(exited).toBe(true);
+    await expectsExit(() =>
+      removeCommand.run!({ args: { name: "nonexistent", workspace: workspacePath } } as any)
+    );
   });
 });
