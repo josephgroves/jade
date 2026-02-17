@@ -3,7 +3,7 @@ import { resolve } from "path";
 import { stat } from "fs/promises";
 import { gitCurrentBranch } from "../utils/git.ts";
 import { findWorkspaceRoot, listBareRepos, listWorktreeDirs } from "../utils/workspace.ts";
-import { readConfig } from "../utils/config.ts";
+import { readConfig, getAppNames } from "../utils/config.ts";
 
 async function pathExists(path: string): Promise<boolean> {
   try {
@@ -83,8 +83,9 @@ export default defineCommand({
       }
 
       // Show registered apps from config
-      if (config.apps.length > 0) {
-        console.log(`\n📋 Registered apps: ${config.apps.join(", ")}`);
+      const appNames = getAppNames(config);
+      if (appNames.length > 0) {
+        console.log(`\n📋 Registered apps: ${appNames.join(", ")}`);
       }
 
       console.log();

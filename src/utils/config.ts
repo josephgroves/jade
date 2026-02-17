@@ -1,9 +1,31 @@
 import { getConfigPath } from "./workspace.ts";
 
+export interface AppEntry {
+  name: string;
+  defaultBranch?: string;
+}
+
+export type AppItem = string | AppEntry;
+
 export interface JadeConfig {
   version: string;
-  apps: string[];
+  apps: AppItem[];
   orgUrl?: string;
+}
+
+export function getAppName(entry: AppItem): string {
+  return typeof entry === "string" ? entry : entry.name;
+}
+
+export function getAppNames(config: JadeConfig): string[] {
+  return config.apps.map(getAppName);
+}
+
+export function getAppDefaultBranch(config: JadeConfig, appName: string): string | undefined {
+  const entry = config.apps.find(
+    (a) => (typeof a === "string" ? a : a.name) === appName
+  );
+  return entry && typeof entry === "object" ? entry.defaultBranch : undefined;
 }
 
 const DEFAULT_CONFIG: JadeConfig = {
@@ -43,10 +65,16 @@ export async function writeConfig(
 /**
  * Add an app to the config
  */
-export async function addAppToConfig(workspaceRoot: string, appName: string): Promise<void> {
+export async function addAppToConfig(
+  workspaceRoot: string,
+  appName: string,
+  defaultBranch?: string
+): Promise<void> {
   const config = await readConfig(workspaceRoot);
-  if (!config.apps.includes(appName)) {
-    config.apps.push(appName);
+  const names = getAppNames(config);
+  if (!names.includes(appName)) {
+    const entry: AppItem = defaultBranch ? { name: appName, defaultBranch } : appName;
+    config.apps.push(entry);
     await writeConfig(workspaceRoot, config);
   }
 }
@@ -59,6 +87,6 @@ export async function removeAppFromConfig(
   appName: string
 ): Promise<void> {
   const config = await readConfig(workspaceRoot);
-  config.apps = config.apps.filter((app) => app !== appName);
+  config.apps = config.apps.filter((app) => getAppName(app) !== appName);
   await writeConfig(workspaceRoot, config);
 }

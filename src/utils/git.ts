@@ -25,28 +25,23 @@ export async function gitRemoveBareRepo(barePath: string): Promise<void> {
  */
 export async function gitGetDefaultBranch(bareRepoPath: string): Promise<string> {
   try {
-    // Try to get symbolic ref (what HEAD points to)
-    const result = await $`git symbolic-ref refs/remotes/origin/HEAD`.cwd(bareRepoPath).text();
-    // Result will be like "refs/remotes/origin/main"
-    return result.trim().replace("refs/remotes/origin/", "");
+    const result = await $`git symbolic-ref HEAD`.cwd(bareRepoPath).text();
+    return result.trim().replace("refs/heads/", "");
   } catch {
-    // Fallback: try common default branch names
-    const branches = await $`git branch -r`.cwd(bareRepoPath).text();
-    
-    // Check for common default branch names in order of preference
-    if (branches.includes("origin/main")) return "main";
-    if (branches.includes("origin/master")) return "master";
-    if (branches.includes("origin/develop")) return "develop";
-    if (branches.includes("origin/trunk")) return "trunk";
-    
-    // Last resort: use first branch
+    const branches = await $`git branch`.cwd(bareRepoPath).text();
+
+    if (branches.includes("main")) return "main";
+    if (branches.includes("master")) return "master";
+    if (branches.includes("develop")) return "develop";
+    if (branches.includes("trunk")) return "trunk";
+
     const firstBranch = branches.trim().split("\n")[0];
-    const branchName = firstBranch?.replace(/^\s*origin\//, "").trim();
-    
+    const branchName = firstBranch?.replace(/^\*?\s*/, "").trim();
+
     if (!branchName) {
       throw new Error("No branches found in repository");
     }
-    
+
     return branchName;
   }
 }

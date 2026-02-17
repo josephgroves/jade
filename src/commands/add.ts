@@ -165,8 +165,8 @@ export default defineCommand({
         }
       }
 
-      // Update config
-      await addAppToConfig(workspaceRoot, appName);
+      // Update config (persist defaultBranch only when --branch was explicitly provided)
+      await addAppToConfig(workspaceRoot, appName, defaultBranch);
       console.log(`✓ Updated jade.json config`);
 
       console.log(`\n✨ Successfully added ${appName}!`);
