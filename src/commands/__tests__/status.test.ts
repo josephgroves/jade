@@ -1,14 +1,14 @@
 import { describe, test, expect, afterEach } from "bun:test";
 import { join } from "path";
-import statusCommand from "../status.ts";
+import { makeStatusCommand } from "../status.ts";
+import { makeAddCommand } from "../add.ts";
+import { makeWorktreeAddCommand } from "../worktree.ts";
 import {
   createTempDir,
-  createLocalGitRepo,
-  createTestWorkspace,
   withCapturedConsole,
 } from "../../test/helpers.ts";
-import addRepoCommand from "../add.ts";
-import { addCommand as worktreeAddCommand } from "../worktree.ts";
+import { createMockGitBackend } from "../../test/mock-git-backend.ts";
+import initCommand from "../init.ts";
 
 describe("status command", () => {
   let tempDir: Awaited<ReturnType<typeof createTempDir>>;
@@ -20,10 +20,13 @@ describe("status command", () => {
   test("outputs workspace path, groups, and apps", async () => {
     tempDir = await createTempDir();
     const workspacePath = join(tempDir.path, "ws");
-    await createTestWorkspace(workspacePath);
+    await initCommand.run!({ args: { path: workspacePath } } as any);
+
+    const { git } = createMockGitBackend();
+    const statusCmd = makeStatusCommand(git);
 
     const logs = await withCapturedConsole(() =>
-      statusCommand.run!({ args: { workspace: workspacePath } } as any)
+      statusCmd.run!({ args: { workspace: workspacePath } } as any)
     );
 
     expect(logs.some((l) => l.includes("Workspace:"))).toBe(true);
@@ -34,24 +37,25 @@ describe("status command", () => {
   test("works with multiple apps and worktree groups", async () => {
     tempDir = await createTempDir();
     const workspacePath = join(tempDir.path, "ws");
-    await createTestWorkspace(workspacePath);
-    const sourceRepo1 = join(tempDir.path, "app1");
-    const sourceRepo2 = join(tempDir.path, "app2");
-    await createLocalGitRepo(sourceRepo1);
-    await createLocalGitRepo(sourceRepo2);
+    await initCommand.run!({ args: { path: workspacePath } } as any);
 
-    await addRepoCommand.run!({
-      args: { repoNameOrUrl: sourceRepo1, name: "app1", workspace: workspacePath },
+    const { git } = createMockGitBackend();
+    const addCmd = makeAddCommand(git);
+    const worktreeAddCmd = makeWorktreeAddCommand(git);
+    const statusCmd = makeStatusCommand(git);
+
+    await addCmd.run!({
+      args: { repoNameOrUrl: "https://github.com/org/app1", name: "app1", workspace: workspacePath },
     } as any);
-    await addRepoCommand.run!({
-      args: { repoNameOrUrl: sourceRepo2, name: "app2", workspace: workspacePath },
+    await addCmd.run!({
+      args: { repoNameOrUrl: "https://github.com/org/app2", name: "app2", workspace: workspacePath },
     } as any);
-    await worktreeAddCommand.run!({
+    await worktreeAddCmd.run!({
       args: { name: "feat-auth", workspace: workspacePath },
     } as any);
 
     const logs = await withCapturedConsole(() =>
-      statusCommand.run!({ args: { workspace: workspacePath } } as any)
+      statusCmd.run!({ args: { workspace: workspacePath } } as any)
     );
 
     const output = logs.join("\n");

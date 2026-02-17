@@ -1,15 +1,19 @@
 import { describe, test, expect, afterEach } from "bun:test";
 import { join } from "path";
 import { stat } from "fs/promises";
-import { addCommand, listCommand, removeCommand } from "../worktree.ts";
+import {
+  makeWorktreeAddCommand,
+  makeWorktreeListCommand,
+  makeWorktreeRemoveCommand,
+} from "../worktree.ts";
+import { makeAddCommand } from "../add.ts";
 import {
   createTempDir,
-  createLocalGitRepo,
-  createTestWorkspace,
   withCapturedConsole,
   expectsExit,
 } from "../../test/helpers.ts";
-import addRepoCommand from "../add.ts";
+import { createMockGitBackend } from "../../test/mock-git-backend.ts";
+import initCommand from "../init.ts";
 
 describe("worktree add command", () => {
   let tempDir: Awaited<ReturnType<typeof createTempDir>>;
@@ -21,15 +25,17 @@ describe("worktree add command", () => {
   test("creates new worktree group with worktrees for all apps", async () => {
     tempDir = await createTempDir();
     const workspacePath = join(tempDir.path, "ws");
-    await createTestWorkspace(workspacePath);
-    const sourceRepo = join(tempDir.path, "app");
-    await createLocalGitRepo(sourceRepo);
+    await initCommand.run!({ args: { path: workspacePath } } as any);
 
-    await addRepoCommand.run!({
-      args: { repoNameOrUrl: sourceRepo, name: "app", workspace: workspacePath },
+    const { git } = createMockGitBackend();
+    const addCmd = makeAddCommand(git);
+    const worktreeAddCmd = makeWorktreeAddCommand(git);
+
+    await addCmd.run!({
+      args: { repoNameOrUrl: "https://github.com/org/app", name: "app", workspace: workspacePath },
     } as any);
 
-    await addCommand.run!({
+    await worktreeAddCmd.run!({
       args: { name: "feat-auth", workspace: workspacePath },
     } as any);
 
@@ -47,16 +53,18 @@ describe("worktree list command", () => {
   test("outputs groups and branches", async () => {
     tempDir = await createTempDir();
     const workspacePath = join(tempDir.path, "ws");
-    await createTestWorkspace(workspacePath);
-    const sourceRepo = join(tempDir.path, "app");
-    await createLocalGitRepo(sourceRepo);
+    await initCommand.run!({ args: { path: workspacePath } } as any);
 
-    await addRepoCommand.run!({
-      args: { repoNameOrUrl: sourceRepo, name: "app", workspace: workspacePath },
+    const { git } = createMockGitBackend();
+    const addCmd = makeAddCommand(git);
+    const listCmd = makeWorktreeListCommand(git);
+
+    await addCmd.run!({
+      args: { repoNameOrUrl: "https://github.com/org/app", name: "app", workspace: workspacePath },
     } as any);
 
     const logs = await withCapturedConsole(() =>
-      listCommand.run!({ args: { workspace: workspacePath } } as any)
+      listCmd.run!({ args: { workspace: workspacePath } } as any)
     );
 
     expect(logs.some((l) => l.includes("main") || l.includes("Worktree groups"))).toBe(true);
@@ -73,19 +81,22 @@ describe("worktree remove command", () => {
   test("removes worktree group", async () => {
     tempDir = await createTempDir();
     const workspacePath = join(tempDir.path, "ws");
-    await createTestWorkspace(workspacePath);
-    const sourceRepo = join(tempDir.path, "app");
-    await createLocalGitRepo(sourceRepo);
+    await initCommand.run!({ args: { path: workspacePath } } as any);
 
-    await addRepoCommand.run!({
-      args: { repoNameOrUrl: sourceRepo, name: "app", workspace: workspacePath },
+    const { git } = createMockGitBackend();
+    const addCmd = makeAddCommand(git);
+    const worktreeAddCmd = makeWorktreeAddCommand(git);
+    const worktreeRemoveCmd = makeWorktreeRemoveCommand(git);
+
+    await addCmd.run!({
+      args: { repoNameOrUrl: "https://github.com/org/app", name: "app", workspace: workspacePath },
     } as any);
 
-    await addCommand.run!({
+    await worktreeAddCmd.run!({
       args: { name: "feat-x", workspace: workspacePath },
     } as any);
 
-    await removeCommand.run!({
+    await worktreeRemoveCmd.run!({
       args: { name: "feat-x", workspace: workspacePath },
     } as any);
 
@@ -95,10 +106,13 @@ describe("worktree remove command", () => {
   test("prevents removal of main", async () => {
     tempDir = await createTempDir();
     const workspacePath = join(tempDir.path, "ws");
-    await createTestWorkspace(workspacePath);
+    await initCommand.run!({ args: { path: workspacePath } } as any);
+
+    const { git } = createMockGitBackend();
+    const worktreeRemoveCmd = makeWorktreeRemoveCommand(git);
 
     await expectsExit(() =>
-      removeCommand.run!({ args: { name: "main", workspace: workspacePath } } as any)
+      worktreeRemoveCmd.run!({ args: { name: "main", workspace: workspacePath } } as any)
     );
   });
 });

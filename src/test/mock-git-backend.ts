@@ -1,6 +1,6 @@
-import { mkdir } from "fs/promises";
+import { mkdir, rm } from "fs/promises";
 import { join } from "path";
-import type { GitBackend } from "../utils/git-backend.ts";
+import type { GitBackend, WorktreeInfo } from "../utils/git-backend.ts";
 
 /**
  * In-memory state that the mock backend tracks per bare repo path.
@@ -123,6 +123,20 @@ export function createMockGitBackend(): MockGitBackend {
     },
 
     /**
+     * Return all worktrees for a bare repo as WorktreeInfo[].
+     */
+    async worktreeList(bareRepoPath: string): Promise<WorktreeInfo[]> {
+      record("worktreeList", bareRepoPath);
+      const state = states.get(bareRepoPath);
+      if (!state) return [];
+      return [...state.worktrees.entries()].map(([path, branch]) => ({
+        path,
+        branch,
+        commit: "mock-commit-sha",
+      }));
+    },
+
+    /**
      * Simulate worktree remove: delete the in-memory record (caller removes the dir).
      */
     async worktreeRemove(bareRepoPath: string, worktreePath: string): Promise<void> {
@@ -130,6 +144,20 @@ export function createMockGitBackend(): MockGitBackend {
       const state = states.get(bareRepoPath);
       if (state) {
         state.worktrees.delete(worktreePath);
+      }
+    },
+
+    /**
+     * Simulate checkout: update the branch tracked at the given worktree path.
+     */
+    async checkout(cwd: string, branch: string, create?: boolean): Promise<void> {
+      record("checkout", cwd, branch, create);
+      for (const state of states.values()) {
+        if (state.worktrees.has(cwd)) {
+          state.worktrees.set(cwd, branch);
+          if (create) state.branches.add(branch);
+          return;
+        }
       }
     },
 
@@ -157,12 +185,12 @@ export function createMockGitBackend(): MockGitBackend {
     },
 
     /**
-     * Simulate removing the bare repo directory (no-op on in-memory state;
-     * actual fs removal is handled by the command with rm -rf).
+     * Simulate removing the bare repo directory — deletes on disk and in memory.
      */
     async removeBareRepo(barePath: string): Promise<void> {
       record("removeBareRepo", barePath);
       states.delete(barePath);
+      await rm(barePath, { recursive: true, force: true });
     },
   };
 
