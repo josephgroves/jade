@@ -62,25 +62,36 @@ export async function createBareClone(
 }
 
 /**
- * Capture console.log output for the duration of the async callback.
- * Returns the lines that were logged.
+ * Capture console.log and process.stdout output for the duration of the async callback.
+ * Returns the lines that were written (splitting on newlines).
  *
  * Usage:
  *   const logs = await withCapturedConsole(() => command.run!(...));
  *   expect(logs).toContain("some output");
  */
 export async function withCapturedConsole(fn: () => Promise<void>): Promise<string[]> {
-  const logs: string[] = [];
+  const chunks: string[] = [];
+
   const origLog = console.log;
   console.log = (...args: unknown[]) => {
-    logs.push(args.map(String).join(" "));
+    chunks.push(args.map(String).join(" "));
   };
+
+  const origWrite = process.stdout.write.bind(process.stdout);
+  process.stdout.write = (chunk: unknown, ...rest: unknown[]) => {
+    if (typeof chunk === "string") chunks.push(chunk);
+    else if (chunk instanceof Buffer) chunks.push(chunk.toString());
+    return true;
+  };
+
   try {
     await fn();
   } finally {
     console.log = origLog;
+    process.stdout.write = origWrite;
   }
-  return logs;
+
+  return chunks.flatMap((c) => c.split("\n")).filter((l) => l.trim().length > 0);
 }
 
 /**

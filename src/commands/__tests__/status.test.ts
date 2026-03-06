@@ -2,7 +2,9 @@ import { describe, test, expect, afterEach } from "bun:test";
 import { join } from "path";
 import { makeStatusCommand } from "../status.ts";
 import { makeAddCommand } from "../add.ts";
-import { makeWorktreeAddCommand } from "../worktree.ts";
+import { makeWorktreeAddCommand, type SelectAppsFn } from "../worktree.ts";
+
+const selectAll: SelectAppsFn = async (apps) => apps;
 import {
   createTempDir,
   withCapturedConsole,
@@ -41,7 +43,7 @@ describe("status command", () => {
 
     const { git } = createMockGitBackend();
     const addCmd = makeAddCommand(git);
-    const worktreeAddCmd = makeWorktreeAddCommand(git);
+    const worktreeAddCmd = makeWorktreeAddCommand(git, selectAll);
     const statusCmd = makeStatusCommand(git);
 
     await addCmd.run!({

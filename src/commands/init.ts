@@ -2,8 +2,9 @@ import { defineCommand } from "citty";
 import { resolve } from "path";
 import { stat } from "fs/promises";
 import { $ } from "bun";
+import { intro, outro, cancel, log } from "@clack/prompts";
 import { writeConfig } from "../utils/config.ts";
-import { getBarePath, getMainWorktreePath } from "../utils/workspace.ts";
+import { getBarePath, getMainWorktreePath, getWorktreeContainerPath } from "../utils/workspace.ts";
 
 async function pathExists(path: string): Promise<boolean> {
   try {
@@ -34,39 +35,36 @@ export default defineCommand({
     const workspaceRoot = resolve(args.path as string);
     const barePath = getBarePath(workspaceRoot);
     const mainPath = getMainWorktreePath(workspaceRoot);
+    const worktreeContainerPath = getWorktreeContainerPath(workspaceRoot);
 
-    console.log(`🌆 Initializing workspace at: ${workspaceRoot}`);
+    intro(`Initializing workspace at: ${workspaceRoot}`);
 
-    // Create workspace directory if it doesn't exist
     if (!await pathExists(workspaceRoot)) {
       await $`mkdir -p ${workspaceRoot}`;
-      console.log(`✓ Created workspace directory`);
+      log.success(`Created workspace directory`);
     } else {
       if (await pathExists(barePath)) {
-        console.error(`❌ Workspace already initialized at ${workspaceRoot}`);
+        cancel(`Workspace already initialized at ${workspaceRoot}`);
         process.exit(1);
       }
     }
 
-    // Create .bare directory
     await $`mkdir -p ${barePath}`;
-    console.log(`✓ Created .bare/ directory`);
+    log.success(`Created .bare/ directory`);
 
-    // Create main worktree directory
     await $`mkdir -p ${mainPath}`;
-    console.log(`✓ Created main/ directory`);
+    log.success(`Created main/ directory`);
 
-    // Write config
+    await $`mkdir -p ${worktreeContainerPath}`;
+    log.success(`Created workspace/ directory`);
+
     await writeConfig(workspaceRoot, {
       version: "1.0",
       apps: [],
       orgUrl: args.orgUrl as string | undefined,
     });
-    console.log(`✓ Created jade.json config`);
+    log.success(`Created jade.json config`);
 
-    console.log(`\n✨ Workspace initialized successfully!`);
-    console.log(`\nNext steps:`);
-    console.log(`  cd ${args.path}`);
-    console.log(`  jade add <repo-url> --name <app-name>`);
+    outro(`Workspace initialized! Next: cd ${args.path} && jade add <repo-url>`);
   },
 });

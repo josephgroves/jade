@@ -1,5 +1,6 @@
 import { defineCommand } from "citty";
 import { resolve } from "path";
+import { intro, outro, cancel, log, spinner } from "@clack/prompts";
 import { findWorkspaceRoot, getBarePath, listWorktreeDirs, listBareRepos } from "../utils/workspace.ts";
 import { removeAppFromConfig } from "../utils/config.ts";
 import { type GitBackend, realGitBackend } from "../utils/git-backend.ts";
@@ -23,12 +24,14 @@ export function makeRemoveCommand(git: GitBackend = realGitBackend) {
       },
     },
     async run({ args }) {
+      intro(`Removing repository from workspace`);
+
       const workspaceRoot = args.workspace
         ? resolve(args.workspace as string)
         : await findWorkspaceRoot();
 
       if (!workspaceRoot) {
-        console.error("❌ Not in a jade workspace. Run 'jade init' first.");
+        cancel(`Not in a jade workspace. Run 'jade init' first.`);
         process.exit(1);
       }
 
@@ -38,40 +41,36 @@ export function makeRemoveCommand(git: GitBackend = realGitBackend) {
 
       const bareRepos = await listBareRepos(workspaceRoot);
       if (!bareRepos.includes(appName)) {
-        console.error(`❌ App '${appName}' not found in .bare/`);
-        if (bareRepos.length > 0) {
-          console.log(`\nAvailable apps:`);
-          for (const repo of bareRepos) {
-            console.log(`  - ${repo}`);
-          }
-        }
+        const hint = bareRepos.length > 0
+          ? `\nAvailable apps: ${bareRepos.join(", ")}`
+          : "";
+        cancel(`App '${appName}' not found in .bare/${hint}`);
         process.exit(1);
       }
 
-      console.log(`🗑️  Removing ${appName}...`);
-
       try {
-        const worktreeDirs = await listWorktreeDirs(workspaceRoot);
+        const s = spinner();
+        s.start(`Removing ${appName}`);
 
         const worktrees = await git.worktreeList(bareRepoPath);
         for (const wt of worktrees) {
           try {
             await git.worktreeRemove(bareRepoPath, wt.path);
-            console.log(`✓ Removed worktree: ${wt.path}`);
+            s.message(`Removed worktree: ${wt.path}`);
           } catch (error) {
-            console.warn(`⚠️  Could not remove worktree ${wt.path}: ${error}`);
+            log.warn(`Could not remove worktree ${wt.path}: ${error}`);
           }
         }
 
         await git.removeBareRepo(bareRepoPath);
-        console.log(`✓ Removed bare repository from .bare/${appName}`);
+        s.stop(`Removed bare repository from .bare/${appName}`);
 
         await removeAppFromConfig(workspaceRoot, appName);
-        console.log(`✓ Updated jade.json config`);
+        log.success(`Updated jade.json config`);
 
-        console.log(`\n✨ Successfully removed ${appName}!`);
+        outro(`Successfully removed ${appName}!`);
       } catch (error) {
-        console.error(`❌ Failed to remove repository: ${error}`);
+        cancel(`Failed to remove repository: ${error}`);
         process.exit(1);
       }
     },

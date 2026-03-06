@@ -20,6 +20,7 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "@clack/prompts": "^1.0.1",
     "citty": "^0.2.1"
   }
 }

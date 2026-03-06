@@ -89,7 +89,7 @@ describe("add command", () => {
         orgUrl: "https://github.com/org",
       }) + "\n"
     );
-    await mkdir(join(workspacePath, "feat-auth"), { recursive: true });
+    await mkdir(join(workspacePath, "workspace", "feat-auth"), { recursive: true });
 
     const { git } = createMockGitBackend();
     const addCmd = makeAddCommand(git);
@@ -104,6 +104,6 @@ describe("add command", () => {
 
     const { stat } = await import("fs/promises");
     await stat(join(workspacePath, "main", "app"));
-    await stat(join(workspacePath, "feat-auth", "app"));
+    await stat(join(workspacePath, "workspace", "feat-auth", "app"));
   });
 });

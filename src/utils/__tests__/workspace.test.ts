@@ -86,7 +86,7 @@ describe("workspace", () => {
   test("listWorktreeDirs lists directories excluding dotfiles and .bare", async () => {
     tempDir = await createTempDir();
     await mkdir(join(tempDir.path, "main"), { recursive: true });
-    await mkdir(join(tempDir.path, "feat-auth"), { recursive: true });
+    await mkdir(join(tempDir.path, "workspace", "feat-auth"), { recursive: true });
     await mkdir(join(tempDir.path, ".bare"), { recursive: true });
     await mkdir(join(tempDir.path, ".hidden"), { recursive: true });
     const dirs = await listWorktreeDirs(tempDir.path);

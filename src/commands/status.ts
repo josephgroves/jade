@@ -1,7 +1,8 @@
 import { defineCommand } from "citty";
 import { resolve } from "path";
 import { stat } from "fs/promises";
-import { findWorkspaceRoot, listBareRepos, listWorktreeDirs } from "../utils/workspace.ts";
+import { intro, outro, cancel, note } from "@clack/prompts";
+import { findWorkspaceRoot, getWorktreeGroupPath, listBareRepos, listWorktreeDirs } from "../utils/workspace.ts";
 import { readConfig, getAppNames } from "../utils/config.ts";
 import { type GitBackend, realGitBackend } from "../utils/git-backend.ts";
 
@@ -28,65 +29,61 @@ export function makeStatusCommand(git: GitBackend = realGitBackend) {
       },
     },
     async run({ args }) {
+      intro(`Jade Workspace Status`);
+
       const workspaceRoot = args.workspace
         ? resolve(args.workspace as string)
         : await findWorkspaceRoot();
 
       if (!workspaceRoot) {
-        console.error("❌ Not in a jade workspace. Run 'jade init' first.");
+        cancel(`Not in a jade workspace. Run 'jade init' first.`);
         process.exit(1);
       }
 
       try {
         const config = await readConfig(workspaceRoot);
-
-        console.log(`\n🌆 Jade Workspace Status`);
-        console.log(`\nWorkspace: ${workspaceRoot}`);
-        if (config.orgUrl) {
-          console.log(`Organization: ${config.orgUrl}`);
-        }
-
         const worktreeDirs = await listWorktreeDirs(workspaceRoot);
         const bareRepos = await listBareRepos(workspaceRoot);
 
-        console.log(`\n📂 Worktree Groups:`);
-        if (worktreeDirs.length === 0) {
-          console.log(`  No worktree groups yet. Use 'jade worktree add <name>' to create one.`);
-        } else {
-          for (const dirName of worktreeDirs) {
-            console.log(`  • ${dirName}/`);
-          }
-        }
+        const groupLines = worktreeDirs.length === 0
+          ? [`No worktree groups yet. Use 'jade worktree add <name>' to create one.`]
+          : worktreeDirs.map((d) => `• ${d}/`);
 
-        console.log(`\n📦 Apps:`);
+        note(groupLines.join("\n"), "Worktree Groups");
+
         if (bareRepos.length === 0) {
-          console.log(`  No apps yet. Use 'jade add <url>' to add apps.`);
+          note(`No apps yet. Use 'jade add <url>' to add apps.`, "Apps");
         } else {
+          const appLines: string[] = [];
           for (const appName of bareRepos) {
-            console.log(`  • ${appName}`);
-
+            appLines.push(`• ${appName}`);
             for (const dirName of worktreeDirs) {
-              const appPath = resolve(workspaceRoot, dirName, appName);
+              const appPath = resolve(getWorktreeGroupPath(workspaceRoot, dirName), appName);
               if (await pathExists(appPath)) {
                 try {
                   const branch = await git.currentBranch(appPath);
-                  console.log(`      ${dirName.padEnd(20)} → ${branch}`);
+                  appLines.push(`    ${dirName.padEnd(20)} → ${branch}`);
                 } catch {
-                  console.log(`      ${dirName.padEnd(20)} → (error)`);
+                  appLines.push(`    ${dirName.padEnd(20)} → (error)`);
                 }
               }
             }
           }
+          note(appLines.join("\n"), "Apps");
         }
 
+        const header = [
+          `Workspace: ${workspaceRoot}`,
+          ...(config.orgUrl ? [`Organization: ${config.orgUrl}`] : []),
+        ];
         const appNames = getAppNames(config);
         if (appNames.length > 0) {
-          console.log(`\n📋 Registered apps: ${appNames.join(", ")}`);
+          header.push(`Registered: ${appNames.join(", ")}`);
         }
 
-        console.log();
+        outro(header.join("\n"));
       } catch (error) {
-        console.error(`❌ Failed to get status: ${error}`);
+        cancel(`Failed to get status: ${error}`);
         process.exit(1);
       }
     },

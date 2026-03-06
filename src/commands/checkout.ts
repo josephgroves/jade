@@ -1,6 +1,7 @@
 import { defineCommand } from "citty";
 import { resolve } from "path";
 import { stat } from "fs/promises";
+import { intro, outro, cancel, spinner } from "@clack/prompts";
 import { findWorkspaceRoot } from "../utils/workspace.ts";
 import { type GitBackend, realGitBackend } from "../utils/git-backend.ts";
 
@@ -42,12 +43,14 @@ export function makeCheckoutCommand(git: GitBackend = realGitBackend) {
       },
     },
     async run({ args }) {
+      intro(`Checkout`);
+
       const workspaceRoot = args.workspace
         ? resolve(args.workspace as string)
         : await findWorkspaceRoot();
 
       if (!workspaceRoot) {
-        console.error("❌ Not in a jade workspace. Run 'jade init' first.");
+        cancel(`Not in a jade workspace. Run 'jade init' first.`);
         process.exit(1);
       }
 
@@ -63,7 +66,7 @@ export function makeCheckoutCommand(git: GitBackend = realGitBackend) {
         targetDescription = `app '${app}'`;
 
         if (!await pathExists(targetPath)) {
-          console.error(`❌ App '${app}' not found in current directory`);
+          cancel(`App '${app}' not found in current directory`);
           process.exit(1);
         }
       } else {
@@ -71,14 +74,16 @@ export function makeCheckoutCommand(git: GitBackend = realGitBackend) {
         targetDescription = "current directory";
       }
 
-      const action = create ? "Creating and checking out" : "Checking out";
-      console.log(`${action} branch '${branch}' in ${targetDescription}`);
+      const s = spinner();
+      s.start(`${create ? "Creating and checking out" : "Checking out"} branch '${branch}' in ${targetDescription}`);
 
       try {
         await git.checkout(targetPath, branch, create);
-        console.log(`✓ ${create ? "Created and checked out" : "Checked out"} branch '${branch}'`);
+        s.stop(`${create ? "Created and checked out" : "Checked out"} branch '${branch}'`);
+        outro(`Done`);
       } catch (error) {
-        console.error(`❌ Failed to checkout branch: ${error}`);
+        s.stop(`Failed`);
+        cancel(`Failed to checkout branch: ${error}`);
         process.exit(1);
       }
     },

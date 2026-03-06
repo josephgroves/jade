@@ -53,6 +53,22 @@ export function getMainWorktreePath(workspaceRoot: string): string {
 }
 
 /**
+ * Get the path to the workspace/ directory that contains non-main worktree groups
+ */
+export function getWorktreeContainerPath(workspaceRoot: string): string {
+  return resolve(workspaceRoot, "workspace");
+}
+
+/**
+ * Get the full path for a named worktree group.
+ * "main" lives at the workspace root; all others live under workspace/.
+ */
+export function getWorktreeGroupPath(workspaceRoot: string, groupName: string): string {
+  if (groupName === "main") return resolve(workspaceRoot, "main");
+  return resolve(workspaceRoot, "workspace", groupName);
+}
+
+/**
  * Get the path to the config file
  */
 export function getConfigPath(workspaceRoot: string): string {
@@ -93,24 +109,34 @@ export async function listBareRepos(workspaceRoot: string): Promise<string[]> {
 }
 
 /**
- * List all worktree directories in the workspace root
- * Excludes .bare, jade.json, and dotfiles
+ * List all worktree group names in the workspace.
+ * "main" is included first if it exists at the workspace root.
+ * All other groups are discovered inside the workspace/ subdirectory.
  */
 export async function listWorktreeDirs(workspaceRoot: string): Promise<string[]> {
   if (!await pathExists(workspaceRoot)) {
     return [];
   }
 
+  const directories: string[] = [];
+
+  if (await pathExists(resolve(workspaceRoot, "main"))) {
+    directories.push("main");
+  }
+
+  const containerPath = getWorktreeContainerPath(workspaceRoot);
+  if (!await pathExists(containerPath)) {
+    return directories;
+  }
+
   try {
     const glob = new Bun.Glob("*");
-    const entries = Array.from(glob.scanSync({ cwd: workspaceRoot, onlyFiles: false }));
-    
-    // Filter to only directories, excluding dotfiles and .bare
-    const directories: string[] = [];
+    const entries = Array.from(glob.scanSync({ cwd: containerPath, onlyFiles: false }));
+
     for (const entry of entries) {
-      if (entry.startsWith(".") || entry === ".bare") continue;
-      
-      const fullPath = resolve(workspaceRoot, entry);
+      if (entry.startsWith(".")) continue;
+
+      const fullPath = resolve(containerPath, entry);
       try {
         const stats = await stat(fullPath);
         if (stats.isDirectory()) {
@@ -120,8 +146,9 @@ export async function listWorktreeDirs(workspaceRoot: string): Promise<string[]>
         // Ignore entries that can't be stat'd
       }
     }
-    return directories;
   } catch {
-    return [];
+    // workspace/ doesn't exist or can't be read — no non-main groups
   }
+
+  return directories;
 }
