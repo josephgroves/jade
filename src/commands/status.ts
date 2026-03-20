@@ -19,7 +19,7 @@ export function makeStatusCommand(git: GitBackend = realGitBackend) {
   return defineCommand({
     meta: {
       name: "status",
-      description: "Show workspace status: worktree groups, apps, and branches",
+      description: "Show workspace status: workspaces, apps, and branches",
     },
     args: {
       workspace: {
@@ -46,10 +46,10 @@ export function makeStatusCommand(git: GitBackend = realGitBackend) {
         const bareRepos = await listBareRepos(workspaceRoot);
 
         const groupLines = worktreeDirs.length === 0
-          ? [`No worktree groups yet. Use 'jade worktree add <name>' to create one.`]
+          ? [`No workspaces yet. Use 'jade workspace add <name>' to create one.`]
           : worktreeDirs.map((d) => `• ${d}/`);
 
-        note(groupLines.join("\n"), "Worktree Groups");
+        note(groupLines.join("\n"), "Workspaces");
 
         if (bareRepos.length === 0) {
           note(`No apps yet. Use 'jade add <url>' to add apps.`, "Apps");

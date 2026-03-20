@@ -209,6 +209,20 @@ export async function isBranchCheckedOut(cwd: string, branch: string): Promise<b
 }
 
 /**
+ * Fetch all remotes for a bare repository
+ */
+export async function gitFetch(bareRepoPath: string): Promise<void> {
+  await $`git fetch --all --prune`.cwd(bareRepoPath);
+}
+
+/**
+ * Fast-forward pull in a worktree directory
+ */
+export async function gitPullFF(cwd: string): Promise<void> {
+  await $`git pull --ff-only`.cwd(cwd);
+}
+
+/**
  * Delete a branch in a repository
  */
 export async function gitDeleteBranch(

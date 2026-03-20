@@ -19,6 +19,8 @@ export interface GitBackend {
   currentBranch(cwd: string): Promise<string>;
   deleteBranch(cwd: string, branch: string, force?: boolean): Promise<void>;
   removeBareRepo(barePath: string): Promise<void>;
+  fetch(bareRepoPath: string): Promise<void>;
+  pullFF(cwd: string): Promise<void>;
 }
 
 import {
@@ -31,6 +33,8 @@ import {
   gitCurrentBranch,
   gitDeleteBranch,
   gitRemoveBareRepo,
+  gitFetch,
+  gitPullFF,
 } from "./git.ts";
 
 /**
@@ -47,4 +51,6 @@ export const realGitBackend: GitBackend = {
   currentBranch: gitCurrentBranch,
   deleteBranch: gitDeleteBranch,
   removeBareRepo: gitRemoveBareRepo,
+  fetch: gitFetch,
+  pullFF: gitPullFF,
 };

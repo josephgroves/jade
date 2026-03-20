@@ -1,6 +1,6 @@
 # jade
 
-A CLI for managing multi-repo workspaces using git bare repos and worktrees. Work on multiple branches across multiple repositories simultaneously without cloning anything twice.
+A CLI for managing multi-repo workspaces using git bare repos. Work on multiple branches across multiple repositories simultaneously without cloning anything twice.
 
 ## Install
 
@@ -21,17 +21,17 @@ Verify with `jade --help`.
 | Command | Description |
 |---------|-------------|
 | `jade init <path>` | Create a new workspace with a `.bare/` and `main/` directory |
-| `jade add <repo>` | Clone a repo (bare) and create worktrees in all existing groups |
-| `jade remove <app>` | Remove all worktrees and the bare repo for an app |
-| `jade worktree add <name>` | Create a worktree group — a directory with every app on a shared branch |
-| `jade worktree list` | List all worktree groups and their apps/branches |
-| `jade worktree remove <name>` | Remove a worktree group (optionally delete branches with `-d`) |
+| `jade add <repo>` | Clone a repo (bare) and add it to all existing workspaces |
+| `jade remove <app>` | Remove an app and its data from all workspaces |
+| `jade workspace add <name>` | Create a workspace — a directory with every app on a shared branch |
+| `jade workspace list` | List all workspaces and their apps/branches |
+| `jade workspace remove <name>` | Remove a workspace (optionally delete branches with `-d`) |
 | `jade checkout <branch>` | Checkout or create (`-c`) a branch in a specific app |
-| `jade status` | Show workspace config, worktree groups, and registered apps |
+| `jade status` | Show workspace config, workspaces, and registered apps |
 
 ## How it works
 
-Each repository is cloned **once** as a bare repo inside `.bare/`. Worktrees are created from those bare repos and grouped into directories by branch name. This means no duplicate clones, instant branch switching, and a clean directory layout:
+Each repository is cloned **once** as a bare repo inside `.bare/`. Workspaces are directories that group apps together by branch name. This means no duplicate clones, instant branch switching, and a clean directory layout:
 
 ```
 workspace/
@@ -39,11 +39,11 @@ workspace/
     frontend/          # bare clone
     backend/           # bare clone
   main/
-    frontend/          # worktree on default branch
-    backend/           # worktree on default branch
+    frontend/          # on default branch
+    backend/           # on default branch
   feat-auth/
-    frontend/          # worktree on feat-auth branch
-    backend/           # worktree on feat-auth branch
+    frontend/          # on feat-auth branch
+    backend/           # on feat-auth branch
   jade.json            # workspace config
 ```
 
@@ -62,10 +62,10 @@ jade add https://github.com/other-org/shared-lib --name shared
 # See what you've got
 jade status
 
-# Start a feature — creates a worktree group with every app on the same branch
-jade worktree add feat-navigation
+# Start a feature — creates a workspace with every app on the same branch
+jade workspace add feat-navigation
 
-# Work in the feature worktrees
+# Work in the feature workspace
 cd feat-navigation/frontend
 # ... make changes, commit, push ...
 
@@ -74,7 +74,7 @@ cd ../backend
 
 # Clean up when the feature is done
 cd ~/work/my-workspace
-jade worktree remove feat-navigation -d   # -d also deletes the branches
+jade workspace remove feat-navigation -d   # -d also deletes the branches
 ```
 
 ## Configuration

@@ -192,6 +192,14 @@ export function createMockGitBackend(): MockGitBackend {
       states.delete(barePath);
       await rm(barePath, { recursive: true, force: true });
     },
+
+    async fetch(bareRepoPath: string): Promise<void> {
+      record("fetch", bareRepoPath);
+    },
+
+    async pullFF(cwd: string): Promise<void> {
+      record("pullFF", cwd);
+    },
   };
 
   return {

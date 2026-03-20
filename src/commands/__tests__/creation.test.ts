@@ -1,5 +1,5 @@
 /**
- * Creation test suite — workspace and worktree creation using a mock git backend.
+ * Creation test suite — workspace creation using a mock git backend.
  *
  * No real git processes are spawned. The mock backend simulates filesystem
  * side-effects (creating directories) and tracks in-memory state so assertions
@@ -11,7 +11,7 @@ import { stat, mkdir } from "fs/promises";
 import { createMockGitBackend } from "../../test/mock-git-backend.ts";
 import { createTempDir, expectsExit } from "../../test/helpers.ts";
 import { makeAddCommand } from "../add.ts";
-import { makeWorktreeAddCommand, type SelectAppsFn } from "../worktree.ts";
+import { makeWorkspaceAddCommand, type SelectAppsFn } from "../workspace.ts";
 import initCommand from "../init.ts";
 
 const selectAll: SelectAppsFn = async (apps) => apps;
@@ -160,7 +160,7 @@ describe("add command — app creation with mock git", () => {
     expect(calls.some((c) => c.method === "getDefaultBranch")).toBe(true);
   });
 
-  test("creates worktrees in all existing worktree groups", async () => {
+  test("creates worktrees in all existing workspaces", async () => {
     const workspacePath = await initWorkspace();
     const { git } = createMockGitBackend();
     const addCmd = makeAddCommand(git);
@@ -198,9 +198,9 @@ describe("add command — app creation with mock git", () => {
   });
 });
 
-// ─── Worktree group creation (worktree add) with mock git ─────────────────────
+// ─── Workspace creation (workspace add) with mock git ─────────────────────────
 
-describe("worktree add command — group creation with mock git", () => {
+describe("workspace add command — creation with mock git", () => {
   let tempDir: TempDir;
 
   beforeEach(async () => {
@@ -226,42 +226,42 @@ describe("worktree add command — group creation with mock git", () => {
     return { workspacePath, git };
   }
 
-  async function makeWorktreeAdd(git: ReturnType<typeof createMockGitBackend>["git"]) {
-    return makeWorktreeAddCommand(git, selectAll);
+  async function makeWorkspaceAdd(git: ReturnType<typeof createMockGitBackend>["git"]) {
+    return makeWorkspaceAddCommand(git, selectAll);
   }
 
-  test("creates empty worktree group when no apps exist", async () => {
+  test("creates empty workspace when no apps exist", async () => {
     const workspacePath = join(tempDir.path, "ws");
     await initCommand.run!({ args: { path: workspacePath } } as any);
 
     const { git } = createMockGitBackend();
-    const worktreeAddCmd = await makeWorktreeAdd(git);
+    const workspaceAddCmd = await makeWorkspaceAdd(git);
 
-    await worktreeAddCmd.run!({
+    await workspaceAddCmd.run!({
       args: { name: "feat-empty", workspace: workspacePath },
     } as any);
 
     expect(await pathExists(join(workspacePath, "workspace", "feat-empty"))).toBe(true);
   });
 
-  test("creates <group>/<app> worktree for all existing apps", async () => {
+  test("creates <workspace>/<app> for all existing apps", async () => {
     const { workspacePath, git } = await makeWorkspaceWithApp("ws", "myapp");
-    const worktreeAddCmd = await makeWorktreeAdd(git);
+    const workspaceAddCmd = await makeWorkspaceAdd(git);
 
-    await worktreeAddCmd.run!({
+    await workspaceAddCmd.run!({
       args: { name: "feat-login", workspace: workspacePath },
     } as any);
 
     expect(await pathExists(join(workspacePath, "workspace", "feat-login", "myapp"))).toBe(true);
   });
 
-  test("creates worktrees for multiple apps", async () => {
+  test("creates workspace for multiple apps", async () => {
     const workspacePath = join(tempDir.path, "ws");
     await initCommand.run!({ args: { path: workspacePath } } as any);
 
     const { git } = createMockGitBackend();
     const addCmd = makeAddCommand(git);
-    const worktreeAddCmd = await makeWorktreeAdd(git);
+    const workspaceAddCmd = await makeWorkspaceAdd(git);
 
     await addCmd.run!({
       args: { repoNameOrUrl: "https://github.com/org/api", name: "api", workspace: workspacePath },
@@ -270,7 +270,7 @@ describe("worktree add command — group creation with mock git", () => {
       args: { repoNameOrUrl: "https://github.com/org/web", name: "web", workspace: workspacePath },
     } as any);
 
-    await worktreeAddCmd.run!({
+    await workspaceAddCmd.run!({
       args: { name: "feat-multi", workspace: workspacePath },
     } as any);
 
@@ -278,16 +278,16 @@ describe("worktree add command — group creation with mock git", () => {
     expect(await pathExists(join(workspacePath, "workspace", "feat-multi", "web"))).toBe(true);
   });
 
-  test("exits when worktree group already exists", async () => {
+  test("exits when workspace already exists", async () => {
     const { workspacePath, git } = await makeWorkspaceWithApp();
-    const worktreeAddCmd = await makeWorktreeAdd(git);
+    const workspaceAddCmd = await makeWorkspaceAdd(git);
 
-    await worktreeAddCmd.run!({
+    await workspaceAddCmd.run!({
       args: { name: "feat-dup", workspace: workspacePath },
     } as any);
 
     await expectsExit(() =>
-      worktreeAddCmd.run!({
+      workspaceAddCmd.run!({
         args: { name: "feat-dup", workspace: workspacePath },
       } as any)
     );
@@ -299,14 +299,13 @@ describe("worktree add command — group creation with mock git", () => {
 
     const { git, getState } = createMockGitBackend();
     const addCmd = makeAddCommand(git);
-    const worktreeAddCmd = await makeWorktreeAdd(git);
+    const workspaceAddCmd = await makeWorkspaceAdd(git);
 
     await addCmd.run!({
       args: { repoNameOrUrl: "https://github.com/org/app", name: "app", workspace: workspacePath },
     } as any);
 
-    // First worktree group on branch "feat-conflict" — succeeds normally
-    await worktreeAddCmd.run!({
+    await workspaceAddCmd.run!({
       args: { name: "feat-conflict", workspace: workspacePath },
     } as any);
 
@@ -321,9 +320,9 @@ describe("worktree add command — group creation with mock git", () => {
   });
 });
 
-// ─── Cross-flow: init -> add -> worktree add ──────────────────────────────────
+// ─── Cross-flow: init -> add -> workspace add ─────────────────────────────────
 
-describe("creation cross-flow: init -> add app -> worktree add", () => {
+describe("creation cross-flow: init -> add app -> workspace add", () => {
   let tempDir: TempDir;
 
   afterEach(async () => {
@@ -338,7 +337,7 @@ describe("creation cross-flow: init -> add app -> worktree add", () => {
 
     const { git } = createMockGitBackend();
     const addCmd = makeAddCommand(git);
-    const worktreeAddCmd = makeWorktreeAddCommand(git, selectAll);
+    const workspaceAddCmd = makeWorkspaceAddCommand(git, selectAll);
 
     await addCmd.run!({
       args: { repoNameOrUrl: "https://github.com/org/frontend", name: "frontend", workspace: workspacePath },
@@ -347,7 +346,7 @@ describe("creation cross-flow: init -> add app -> worktree add", () => {
       args: { repoNameOrUrl: "https://github.com/org/backend", name: "backend", workspace: workspacePath },
     } as any);
 
-    await worktreeAddCmd.run!({
+    await workspaceAddCmd.run!({
       args: { name: "feat-auth", workspace: workspacePath },
     } as any);
 
@@ -371,7 +370,7 @@ describe("creation cross-flow: init -> add app -> worktree add", () => {
     const addCmd = makeAddCommand(git);
     // Use a stub that would exit if called — proves -a bypasses the prompt
     const neverPrompt: SelectAppsFn = async () => Symbol("should-not-be-called");
-    const worktreeAddCmd = makeWorktreeAddCommand(git, neverPrompt);
+    const workspaceAddCmd = makeWorkspaceAddCommand(git, neverPrompt);
 
     await addCmd.run!({
       args: { repoNameOrUrl: "https://github.com/org/api", name: "api", workspace: workspacePath },
@@ -380,7 +379,7 @@ describe("creation cross-flow: init -> add app -> worktree add", () => {
       args: { repoNameOrUrl: "https://github.com/org/web", name: "web", workspace: workspacePath },
     } as any);
 
-    await worktreeAddCmd.run!({
+    await workspaceAddCmd.run!({
       args: { name: "feat-allrepos", workspace: workspacePath, all: true },
     } as any);
 
@@ -396,13 +395,13 @@ describe("creation cross-flow: init -> add app -> worktree add", () => {
 
     const { git, calls } = createMockGitBackend();
     const addCmd = makeAddCommand(git);
-    const worktreeAddCmd = makeWorktreeAddCommand(git, selectAll);
+    const workspaceAddCmd = makeWorkspaceAddCommand(git, selectAll);
 
     await addCmd.run!({
       args: { repoNameOrUrl: "https://github.com/org/svc", name: "svc", workspace: workspacePath },
     } as any);
 
-    await worktreeAddCmd.run!({
+    await workspaceAddCmd.run!({
       args: { name: "feat-x", workspace: workspacePath },
     } as any);
 

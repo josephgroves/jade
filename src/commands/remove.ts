@@ -56,9 +56,9 @@ export function makeRemoveCommand(git: GitBackend = realGitBackend) {
         for (const wt of worktrees) {
           try {
             await git.worktreeRemove(bareRepoPath, wt.path);
-            s.message(`Removed worktree: ${wt.path}`);
+            s.message(`Cleaned up ${wt.path}`);
           } catch (error) {
-            log.warn(`Could not remove worktree ${wt.path}: ${error}`);
+            log.warn(`Could not clean up ${wt.path}: ${error}`);
           }
         }
 

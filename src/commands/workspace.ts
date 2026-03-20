@@ -19,7 +19,7 @@ export type SelectAppsFn = (apps: string[]) => Promise<string[] | symbol>;
 
 const defaultSelectApps: SelectAppsFn = (apps) =>
   multiselect({
-    message: "Select apps to add to this worktree group",
+    message: "Select apps to add to this workspace",
     options: apps.map((a) => ({ value: a, label: a })),
     required: true,
   }) as Promise<string[] | symbol>;
@@ -35,22 +35,22 @@ async function resolveSelectedApps(
   return result;
 }
 
-export function makeWorktreeAddCommand(git: GitBackend = realGitBackend, selectApps: SelectAppsFn = defaultSelectApps) {
+export function makeWorkspaceAddCommand(git: GitBackend = realGitBackend, selectApps: SelectAppsFn = defaultSelectApps) {
   return defineCommand({
     meta: {
       name: "add",
-      description: "Create a new worktree group",
+      description: "Create a new workspace",
     },
     args: {
       name: {
         type: "positional",
-        description: "Worktree name (also used as branch name for apps)",
+        description: "Workspace name (also used as branch name for apps)",
         required: true,
       },
       all: {
         type: "boolean",
         alias: "a",
-        description: "Add all apps to the worktree group without prompting",
+        description: "Add all apps to the workspace without prompting",
         default: false,
       },
       workspace: {
@@ -74,7 +74,7 @@ export function makeWorktreeAddCommand(git: GitBackend = realGitBackend, selectA
       const worktreeDirPath = getWorktreeGroupPath(workspaceRoot, name);
       const existing = await pathExists(worktreeDirPath);
 
-      intro(existing ? `Adding apps to worktree group '${name}'` : `Creating worktree group`);
+      intro(existing ? `Adding apps to workspace '${name}'` : `Creating workspace`);
 
       try {
         await $`mkdir -p ${worktreeDirPath}`;
@@ -90,14 +90,14 @@ export function makeWorktreeAddCommand(git: GitBackend = realGitBackend, selectA
         const candidateApps = bareRepos.filter((app) => !presentApps.includes(app));
 
         if (bareRepos.length === 0) {
-          log.success(`Created empty worktree directory workspace/${name}`);
+          log.success(`Created empty workspace directory workspace/${name}`);
           log.warn(`No apps found. Add apps with 'jade add <repo-url>'`);
           outro(`Done`);
           return;
         }
 
         if (existing && candidateApps.length === 0) {
-          cancel(`All apps are already in worktree group '${name}'`);
+          cancel(`All apps are already in workspace '${name}'`);
           process.exit(1);
         }
 
@@ -112,7 +112,7 @@ export function makeWorktreeAddCommand(git: GitBackend = realGitBackend, selectA
         const created: string[] = [];
         const skipped: string[] = [];
         const s = spinner();
-        s.start(`Creating worktrees for '${name}'`);
+        s.start(`Setting up apps for '${name}'`);
 
         for (const appName of selectedApps) {
           const bareRepoPath = resolve(barePath, appName);
@@ -121,14 +121,14 @@ export function makeWorktreeAddCommand(git: GitBackend = realGitBackend, selectA
           try {
             const actualBranch = await git.worktreeAdd(bareRepoPath, appWorktreePath, name);
             created.push(actualBranch !== name ? `${appName} (${actualBranch})` : appName);
-            s.message(`Created worktree for ${appName}`);
+            s.message(`Added ${appName}`);
           } catch (error) {
-            log.warn(`Could not create worktree for ${appName}: ${error}`);
+            log.warn(`Could not add ${appName}: ${error}`);
             skipped.push(appName);
           }
         }
 
-        s.stop(`Worktrees created`);
+        s.stop(`Apps added`);
 
         if (created.length > 0) {
           log.success(`Created in workspace/${name}/: ${created.join(", ")}`);
@@ -137,22 +137,22 @@ export function makeWorktreeAddCommand(git: GitBackend = realGitBackend, selectA
           log.warn(`Skipped: ${skipped.join(", ")}`);
         }
 
-        outro(`Worktree group '${name}' ready! Next: cd workspace/${name}`);
+        outro(`Workspace '${name}' ready! Next: cd workspace/${name}`);
       } catch (error) {
-        cancel(`Failed to create worktree: ${error}`);
+        cancel(`Failed to create workspace: ${error}`);
         process.exit(1);
       }
     },
   });
 }
 
-export const addCommand = makeWorktreeAddCommand();
+export const addCommand = makeWorkspaceAddCommand();
 
-export function makeWorktreeListCommand(git: GitBackend = realGitBackend) {
+export function makeWorkspaceListCommand(git: GitBackend = realGitBackend) {
   return defineCommand({
     meta: {
       name: "list",
-      description: "List all worktree groups",
+      description: "List all workspaces",
     },
     args: {
       workspace: {
@@ -162,7 +162,7 @@ export function makeWorktreeListCommand(git: GitBackend = realGitBackend) {
       },
     },
     async run({ args }) {
-      intro(`Worktree Groups`);
+      intro(`Workspaces`);
 
       const workspaceRoot = args.workspace
         ? resolve(args.workspace as string)
@@ -178,7 +178,7 @@ export function makeWorktreeListCommand(git: GitBackend = realGitBackend) {
         const bareRepos = await listBareRepos(workspaceRoot);
 
         if (worktreeDirs.length === 0) {
-          outro(`No worktree groups found.`);
+          outro(`No workspaces found.`);
           return;
         }
 
@@ -204,25 +204,25 @@ export function makeWorktreeListCommand(git: GitBackend = realGitBackend) {
 
         outro(`Done`);
       } catch (error) {
-        cancel(`Failed to list worktrees: ${error}`);
+        cancel(`Failed to list workspaces: ${error}`);
         process.exit(1);
       }
     },
   });
 }
 
-export const listCommand = makeWorktreeListCommand();
+export const listCommand = makeWorkspaceListCommand();
 
-export function makeWorktreeRemoveCommand(git: GitBackend = realGitBackend) {
+export function makeWorkspaceRemoveCommand(git: GitBackend = realGitBackend) {
   return defineCommand({
     meta: {
       name: "remove",
-      description: "Remove a worktree group",
+      description: "Remove a workspace",
     },
     args: {
       name: {
         type: "positional",
-        description: "Worktree name to remove",
+        description: "Workspace name to remove",
         required: true,
       },
       deleteBranches: {
@@ -244,7 +244,7 @@ export function makeWorktreeRemoveCommand(git: GitBackend = realGitBackend) {
       },
     },
     async run({ args }) {
-      intro(`Removing worktree group`);
+      intro(`Removing workspace`);
 
       const workspaceRoot = args.workspace
         ? resolve(args.workspace as string)
@@ -260,14 +260,14 @@ export function makeWorktreeRemoveCommand(git: GitBackend = realGitBackend) {
       const force = args.force as boolean;
 
       if (name === "main") {
-        cancel(`Cannot remove the main worktree group`);
+        cancel(`Cannot remove the main workspace`);
         process.exit(1);
       }
 
       const worktreeDirPath = getWorktreeGroupPath(workspaceRoot, name);
 
       if (!await pathExists(worktreeDirPath)) {
-        cancel(`Worktree '${name}' not found`);
+        cancel(`Workspace '${name}' not found`);
         process.exit(1);
       }
 
@@ -275,7 +275,7 @@ export function makeWorktreeRemoveCommand(git: GitBackend = realGitBackend) {
         const bareRepos = await listBareRepos(workspaceRoot);
         const barePath = getBarePath(workspaceRoot);
         const s = spinner();
-        s.start(`Removing worktree group '${name}'`);
+        s.start(`Removing workspace '${name}'`);
 
         for (const appName of bareRepos) {
           const bareRepoPath = resolve(barePath, appName);
@@ -284,9 +284,9 @@ export function makeWorktreeRemoveCommand(git: GitBackend = realGitBackend) {
           if (await pathExists(appWorktreePath)) {
             try {
               await git.worktreeRemove(bareRepoPath, appWorktreePath);
-              s.message(`Removed worktree for ${appName}`);
+              s.message(`Removed ${appName}`);
             } catch (error) {
-              log.warn(`Could not remove worktree for ${appName}: ${error}`);
+              log.warn(`Could not remove ${appName}: ${error}`);
             }
           }
         }
@@ -325,21 +325,21 @@ export function makeWorktreeRemoveCommand(git: GitBackend = realGitBackend) {
           }
         }
 
-        outro(`Worktree group '${name}' removed!`);
+        outro(`Workspace '${name}' removed!`);
       } catch (error) {
-        cancel(`Failed to remove worktree: ${error}`);
+        cancel(`Failed to remove workspace: ${error}`);
         process.exit(1);
       }
     },
   });
 }
 
-export const removeCommand = makeWorktreeRemoveCommand();
+export const removeCommand = makeWorkspaceRemoveCommand();
 
-const worktreeCommand = defineCommand({
+const workspaceCommand = defineCommand({
   meta: {
-    name: "worktree",
-    description: "Manage worktree groups",
+    name: "workspace",
+    description: "Manage workspaces",
   },
   subCommands: {
     add: addCommand,
@@ -348,4 +348,4 @@ const worktreeCommand = defineCommand({
   },
 });
 
-export default worktreeCommand;
+export default workspaceCommand;

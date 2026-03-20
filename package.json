@@ -14,13 +14,13 @@
     "uninstall": "rm -f ~/.local/bin/jade && echo '✓ Removed jade from ~/.local/bin'"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "1.3.10"
   },
   "peerDependencies": {
     "typescript": "^5"
   },
   "dependencies": {
-    "@clack/prompts": "^1.0.1",
+    "@clack/prompts": "^1.1.0",
     "citty": "^0.2.1"
   }
 }

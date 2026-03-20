@@ -2,7 +2,7 @@ import { describe, test, expect, afterEach } from "bun:test";
 import { join } from "path";
 import { makeStatusCommand } from "../status.ts";
 import { makeAddCommand } from "../add.ts";
-import { makeWorktreeAddCommand, type SelectAppsFn } from "../worktree.ts";
+import { makeWorkspaceAddCommand, type SelectAppsFn } from "../workspace.ts";
 
 const selectAll: SelectAppsFn = async (apps) => apps;
 import {
@@ -32,18 +32,18 @@ describe("status command", () => {
     );
 
     expect(logs.some((l) => l.includes("Workspace:"))).toBe(true);
-    expect(logs.some((l) => l.includes("Worktree Groups"))).toBe(true);
+    expect(logs.some((l) => l.includes("Workspaces"))).toBe(true);
     expect(logs.some((l) => l.includes("Apps"))).toBe(true);
   });
 
-  test("works with multiple apps and worktree groups", async () => {
+  test("works with multiple apps and workspaces", async () => {
     tempDir = await createTempDir();
     const workspacePath = join(tempDir.path, "ws");
     await initCommand.run!({ args: { path: workspacePath } } as any);
 
     const { git } = createMockGitBackend();
     const addCmd = makeAddCommand(git);
-    const worktreeAddCmd = makeWorktreeAddCommand(git, selectAll);
+    const workspaceAddCmd = makeWorkspaceAddCommand(git, selectAll);
     const statusCmd = makeStatusCommand(git);
 
     await addCmd.run!({
@@ -52,7 +52,7 @@ describe("status command", () => {
     await addCmd.run!({
       args: { repoNameOrUrl: "https://github.com/org/app2", name: "app2", workspace: workspacePath },
     } as any);
-    await worktreeAddCmd.run!({
+    await workspaceAddCmd.run!({
       args: { name: "feat-auth", workspace: workspacePath },
     } as any);
 

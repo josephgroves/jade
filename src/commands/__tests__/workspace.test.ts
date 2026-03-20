@@ -2,11 +2,11 @@ import { describe, test, expect, afterEach } from "bun:test";
 import { join } from "path";
 import { stat } from "fs/promises";
 import {
-  makeWorktreeAddCommand,
-  makeWorktreeListCommand,
-  makeWorktreeRemoveCommand,
+  makeWorkspaceAddCommand,
+  makeWorkspaceListCommand,
+  makeWorkspaceRemoveCommand,
   type SelectAppsFn,
-} from "../worktree.ts";
+} from "../workspace.ts";
 import { makeAddCommand } from "../add.ts";
 import {
   createTempDir,
@@ -25,7 +25,7 @@ const selectOnly = (appName: string): SelectAppsFn => async (_apps) => [appName]
 /** Stub that simulates the user cancelling the prompt. */
 const selectNone: SelectAppsFn = async (_apps) => Symbol("cancel");
 
-describe("worktree add command", () => {
+describe("workspace add command", () => {
   let tempDir: Awaited<ReturnType<typeof createTempDir>>;
 
   afterEach(async () => {
@@ -39,13 +39,13 @@ describe("worktree add command", () => {
 
     const { git } = createMockGitBackend();
     const addCmd = makeAddCommand(git);
-    const worktreeAddCmd = makeWorktreeAddCommand(git, selectAll);
+    const workspaceAddCmd = makeWorkspaceAddCommand(git, selectAll);
 
     await addCmd.run!({
       args: { repoNameOrUrl: "https://github.com/org/app", name: "app", workspace: workspacePath },
     } as any);
 
-    await worktreeAddCmd.run!({
+    await workspaceAddCmd.run!({
       args: { name: "feat-auth", workspace: workspacePath },
     } as any);
 
@@ -60,13 +60,13 @@ describe("worktree add command", () => {
     const { git } = createMockGitBackend();
     const addCmd = makeAddCommand(git);
     // selectNone would exit if called — proves -a never invokes the prompt
-    const worktreeAddCmd = makeWorktreeAddCommand(git, selectNone);
+    const workspaceAddCmd = makeWorkspaceAddCommand(git, selectNone);
 
     await addCmd.run!({
       args: { repoNameOrUrl: "https://github.com/org/app", name: "app", workspace: workspacePath },
     } as any);
 
-    await worktreeAddCmd.run!({
+    await workspaceAddCmd.run!({
       args: { name: "feat-all", workspace: workspacePath, all: true },
     } as any);
 
@@ -80,7 +80,7 @@ describe("worktree add command", () => {
 
     const { git } = createMockGitBackend();
     const addCmd = makeAddCommand(git);
-    const worktreeAddCmd = makeWorktreeAddCommand(git, selectOnly("alpha"));
+    const workspaceAddCmd = makeWorkspaceAddCommand(git, selectOnly("alpha"));
 
     await addCmd.run!({
       args: { repoNameOrUrl: "https://github.com/org/alpha", name: "alpha", workspace: workspacePath },
@@ -89,7 +89,7 @@ describe("worktree add command", () => {
       args: { repoNameOrUrl: "https://github.com/org/beta", name: "beta", workspace: workspacePath },
     } as any);
 
-    await worktreeAddCmd.run!({
+    await workspaceAddCmd.run!({
       args: { name: "feat-partial", workspace: workspacePath },
     } as any);
 
@@ -114,8 +114,8 @@ describe("worktree add command", () => {
     } as any);
 
     // First run: create the group with only alpha
-    const worktreeAddFirst = makeWorktreeAddCommand(git, selectOnly("alpha"));
-    await worktreeAddFirst.run!({
+    const workspaceAddFirst = makeWorkspaceAddCommand(git, selectOnly("alpha"));
+    await workspaceAddFirst.run!({
       args: { name: "feat-inc", workspace: workspacePath },
     } as any);
 
@@ -123,8 +123,8 @@ describe("worktree add command", () => {
     await expect(stat(join(workspacePath, "workspace", "feat-inc", "beta"))).rejects.toThrow();
 
     // Second run: directory exists — should offer only beta and add it
-    const worktreeAddSecond = makeWorktreeAddCommand(git, selectAll);
-    await worktreeAddSecond.run!({
+    const workspaceAddSecond = makeWorkspaceAddCommand(git, selectAll);
+    await workspaceAddSecond.run!({
       args: { name: "feat-inc", workspace: workspacePath },
     } as any);
 
@@ -138,63 +138,63 @@ describe("worktree add command", () => {
 
     const { git } = createMockGitBackend();
     const addCmd = makeAddCommand(git);
-    const worktreeAddCmd = makeWorktreeAddCommand(git, selectAll);
+    const workspaceAddCmd = makeWorkspaceAddCommand(git, selectAll);
 
     await addCmd.run!({
       args: { repoNameOrUrl: "https://github.com/org/app", name: "app", workspace: workspacePath },
     } as any);
 
-    await worktreeAddCmd.run!({
+    await workspaceAddCmd.run!({
       args: { name: "feat-full", workspace: workspacePath },
     } as any);
 
     // All apps already present — should exit
     await expectsExit(() =>
-      worktreeAddCmd.run!({
+      workspaceAddCmd.run!({
         args: { name: "feat-full", workspace: workspacePath },
       } as any)
     );
   });
 
-  test("cancelled selection exits without creating worktrees", async () => {
+  test("cancelled selection exits without creating workspace", async () => {
     tempDir = await createTempDir();
     const workspacePath = join(tempDir.path, "ws");
     await initCommand.run!({ args: { path: workspacePath } } as any);
 
     const { git } = createMockGitBackend();
     const addCmd = makeAddCommand(git);
-    const worktreeAddCmd = makeWorktreeAddCommand(git, selectNone);
+    const workspaceAddCmd = makeWorkspaceAddCommand(git, selectNone);
 
     await addCmd.run!({
       args: { repoNameOrUrl: "https://github.com/org/app", name: "app", workspace: workspacePath },
     } as any);
 
     await expectsExit(() =>
-      worktreeAddCmd.run!({
+      workspaceAddCmd.run!({
         args: { name: "feat-cancel", workspace: workspacePath },
       } as any)
     );
 
-    // worktree group directory should have been cleaned up
+    // workspace directory should have been cleaned up
     await expect(stat(join(workspacePath, "workspace", "feat-cancel"))).rejects.toThrow();
   });
 });
 
-describe("worktree list command", () => {
+describe("workspace list command", () => {
   let tempDir: Awaited<ReturnType<typeof createTempDir>>;
 
   afterEach(async () => {
     if (tempDir) await tempDir.cleanup();
   });
 
-  test("outputs groups and branches", async () => {
+  test("outputs workspaces and branches", async () => {
     tempDir = await createTempDir();
     const workspacePath = join(tempDir.path, "ws");
     await initCommand.run!({ args: { path: workspacePath } } as any);
 
     const { git } = createMockGitBackend();
     const addCmd = makeAddCommand(git);
-    const listCmd = makeWorktreeListCommand(git);
+    const listCmd = makeWorkspaceListCommand(git);
 
     await addCmd.run!({
       args: { repoNameOrUrl: "https://github.com/org/app", name: "app", workspace: workspacePath },
@@ -204,36 +204,36 @@ describe("worktree list command", () => {
       listCmd.run!({ args: { workspace: workspacePath } } as any)
     );
 
-    expect(logs.some((l) => l.includes("main") || l.includes("Worktree groups"))).toBe(true);
+    expect(logs.some((l) => l.includes("main") || l.includes("Workspaces"))).toBe(true);
   });
 });
 
-describe("worktree remove command", () => {
+describe("workspace remove command", () => {
   let tempDir: Awaited<ReturnType<typeof createTempDir>>;
 
   afterEach(async () => {
     if (tempDir) await tempDir.cleanup();
   });
 
-  test("removes worktree group", async () => {
+  test("removes workspace", async () => {
     tempDir = await createTempDir();
     const workspacePath = join(tempDir.path, "ws");
     await initCommand.run!({ args: { path: workspacePath } } as any);
 
     const { git } = createMockGitBackend();
     const addCmd = makeAddCommand(git);
-    const worktreeAddCmd = makeWorktreeAddCommand(git, selectAll);
-    const worktreeRemoveCmd = makeWorktreeRemoveCommand(git);
+    const workspaceAddCmd = makeWorkspaceAddCommand(git, selectAll);
+    const workspaceRemoveCmd = makeWorkspaceRemoveCommand(git);
 
     await addCmd.run!({
       args: { repoNameOrUrl: "https://github.com/org/app", name: "app", workspace: workspacePath },
     } as any);
 
-    await worktreeAddCmd.run!({
+    await workspaceAddCmd.run!({
       args: { name: "feat-x", workspace: workspacePath },
     } as any);
 
-    await worktreeRemoveCmd.run!({
+    await workspaceRemoveCmd.run!({
       args: { name: "feat-x", workspace: workspacePath },
     } as any);
 
@@ -246,10 +246,10 @@ describe("worktree remove command", () => {
     await initCommand.run!({ args: { path: workspacePath } } as any);
 
     const { git } = createMockGitBackend();
-    const worktreeRemoveCmd = makeWorktreeRemoveCommand(git);
+    const workspaceRemoveCmd = makeWorkspaceRemoveCommand(git);
 
     await expectsExit(() =>
-      worktreeRemoveCmd.run!({ args: { name: "main", workspace: workspacePath } } as any)
+      workspaceRemoveCmd.run!({ args: { name: "main", workspace: workspacePath } } as any)
     );
   });
 });

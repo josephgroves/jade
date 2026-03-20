@@ -35,7 +35,7 @@ export function makeAddCommand(git: GitBackend = realGitBackend) {
       branch: {
         type: "string",
         alias: "b",
-        description: "Default branch to use for main worktree (auto-detected if not specified)",
+        description: "Default branch for the main workspace (auto-detected if not specified)",
       },
       workspace: {
         type: "string",
@@ -128,7 +128,7 @@ export function makeAddCommand(git: GitBackend = realGitBackend) {
 
         const worktreeDirs = await listWorktreeDirs(workspaceRoot);
         const worktreeSpinner = spinner();
-        worktreeSpinner.start(`Creating worktrees`);
+        worktreeSpinner.start(`Setting up workspaces`);
 
         for (const dirName of worktreeDirs) {
           const groupPath = getWorktreeGroupPath(workspaceRoot, dirName);
@@ -151,7 +151,7 @@ export function makeAddCommand(git: GitBackend = realGitBackend) {
           }
         }
 
-        worktreeSpinner.stop(`Worktrees created`);
+        worktreeSpinner.stop(`Workspaces ready`);
 
         await addAppToConfig(workspaceRoot, appName, defaultBranch);
         log.success(`Updated jade.json config`);
