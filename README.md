@@ -16,6 +16,8 @@ bun run install-global  # places binary at ~/.local/bin/jade
 
 Verify with `jade --help`.
 
+To verify that compiled binaries embed Cursor skills text, run **`bun run test:embed`** (optional; skipped in default `bun test` because some environments block `.cursor` creation in spawned processes).
+
 ## Features
 
 | Command | Description |
@@ -28,6 +30,9 @@ Verify with `jade --help`.
 | `jade workspace remove <name>` | Remove a workspace (optionally delete branches with `-d`) |
 | `jade checkout <branch>` | Checkout or create (`-c`) a branch in a specific app |
 | `jade status` | Print jade version, workspace root, org URL (if set), and workspace groups |
+| `jade skills install` | Copy bundled Cursor agent skills into `<project>/.cursor/skills/` |
+
+Use **`jade skills install`** from any project root (or **`--project <dir>`**) to add the Jade workspace skill for Cursor agents. Skill text is **imported at build time** (`skills/*/SKILL.md` with `type: "text"`), so a **`bun build --compile`** binary embeds them and does not need a separate `skills/` folder next to the executable.
 
 ## How it works
 

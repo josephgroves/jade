@@ -43,6 +43,7 @@ Commands resolve the workspace root by **walking up from cwd** until a `.bare/` 
 | `jade init <path> [--orgUrl <url>]` | Create `.bare/`, `main/`, `workspace/`, and `jade.json`. |
 | `jade add <repo-or-url> [--name <app>] [-b branch] [-w path]` | Bare-clone app into `.bare/<app>`, then add a worktree for **each existing group** (`main` on default branch; other groups on branch = group directory name). |
 | `jade status [-w path]` | Plain summary: jade version, root, optional `org`, workspace group names. |
+| `jade skills install [--project <dir>]` | Copy bundled Cursor skills into `<dir>/.cursor/skills/`. |
 | `jade workspace add <name> [-a] [-w path]` | Create `workspace/<name>/` (or add missing apps). `-a` adds all apps without prompting. |
 | `jade workspace list [-w path]` | List groups and each app’s current branch. |
 | `jade workspace remove <name> [-d] [-f] [-w path]` | Remove group worktrees and delete `workspace/<name>/`. **Cannot remove `main`.** `-d` deletes branch `<name>` in apps (from `main/<app>` as reference); `-f` force-deletes branches. |
@@ -62,8 +63,8 @@ Commands resolve the workspace root by **walking up from cwd** until a `.bare/` 
 
 ## Where to install this skill
 
-- **Project (recommended for this repo)**: `.cursor/skills/jade-workspace/` in the Jade repository—versioned and shared with clones.
-- **Personal**: copy the same folder to `~/.cursor/skills/jade-workspace/` for use across all projects.
+- **Project**: from the target repo root, run **`jade skills install`** (optional **`--project <dir>`**) — copies bundled skills into **`.cursor/skills/`** for Cursor.
+- **Personal**: copy **`jade-workspace/`** to **`~/.cursor/skills/jade-workspace/`** for use across all projects.
 
 Do not place custom skills under `~/.cursor/skills-cursor/` (reserved for Cursor).
 

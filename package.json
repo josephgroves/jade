@@ -8,6 +8,7 @@
   },
   "scripts": {
     "test": "bun test",
+    "test:embed": "JADE_VERIFY_COMPILE_EMBED=1 bun test src/commands/__tests__/skills-embed-compile.test.ts",
     "jade": "bun run index.ts",
     "build": "bun build --compile ./index.ts --outfile jade",
     "install-global": "bun run build && mkdir -p ~/.local/bin && mv jade ~/.local/bin/",
