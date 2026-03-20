@@ -42,23 +42,23 @@ Commands resolve the workspace root by **walking up from cwd** until a `.bare/` 
 |--------|---------|
 | `jade init <path> [--orgUrl <url>]` | Create `.bare/`, `main/`, `workspace/`, and `jade.json`. |
 | `jade add <repo-or-url> [--name <app>] [-b branch] [-w path]` | Bare-clone app into `.bare/<app>`, then add a worktree for **each existing group** (`main` on default branch; other groups on branch = group directory name). |
-| `jade status [-w path]` | Workspaces list, apps, and per-group branches. |
+| `jade status [-w path]` | Plain summary: jade version, root, optional `org`, workspace group names. |
 | `jade workspace add <name> [-a] [-w path]` | Create `workspace/<name>/` (or add missing apps). `-a` adds all apps without prompting. |
 | `jade workspace list [-w path]` | List groups and each app’s current branch. |
 | `jade workspace remove <name> [-d] [-f] [-w path]` | Remove group worktrees and delete `workspace/<name>/`. **Cannot remove `main`.** `-d` deletes branch `<name>` in apps (from `main/<app>` as reference); `-f` force-deletes branches. |
 
 ## Agent workflow
 
-1. Run **`jade status`** (or **`jade status -w <workspace-root>`**) before assuming paths or branch names.
+1. Run **`jade status`** (or **`jade status -w <workspace-root>`**) for root, version, org, and group names; use **`jade workspace list`** for per-app branches.
 2. Treat **“workspace”** in Jade as a **group**: either **`main/`** or **`workspace/<name>/`**.
 3. Edit and run git **inside** `main/<app>/` or `workspace/<name>/<app>/`, not inside `.bare/`.
-4. After **`jade workspace add`**, confirm actual branches with **`jade workspace list`** or **`jade status`** if worktree add hit a naming conflict (Git may use a uniquified branch).
+4. After **`jade workspace add`**, confirm actual branches with **`jade workspace list`** if worktree add hit a naming conflict (Git may use a uniquified branch).
 
 ## Pitfalls
 
 - **`main` is special**: listed with other groups but lives at **`main/`** at the root; **`jade workspace remove main`** is rejected.
 - **`jade add short-name`** requires **`orgUrl`** in `jade.json`; otherwise use a full git URL.
-- **Folder name vs branch**: the group directory name is the *intended* branch for non-`main` groups; collisions can produce a different branch name—always verify with status/list.
+- **Folder name vs branch**: the group directory name is the *intended* branch for non-`main` groups; collisions can produce a different branch name—verify with **`jade workspace list`**.
 
 ## Where to install this skill
 

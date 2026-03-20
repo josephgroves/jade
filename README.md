@@ -27,7 +27,7 @@ Verify with `jade --help`.
 | `jade workspace list` | List all workspaces and their apps/branches |
 | `jade workspace remove <name>` | Remove a workspace (optionally delete branches with `-d`) |
 | `jade checkout <branch>` | Checkout or create (`-c`) a branch in a specific app |
-| `jade status` | Show workspace config, workspaces, and registered apps |
+| `jade status` | Print jade version, workspace root, org URL (if set), and workspace groups |
 
 ## How it works
 

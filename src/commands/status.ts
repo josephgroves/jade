@@ -1,25 +1,33 @@
 import { defineCommand } from "citty";
 import { resolve } from "path";
-import { stat } from "fs/promises";
-import { intro, outro, cancel, note } from "@clack/prompts";
-import { findWorkspaceRoot, getWorktreeGroupPath, listBareRepos, listWorktreeDirs } from "../utils/workspace.ts";
-import { readConfig, getAppNames } from "../utils/config.ts";
-import { type GitBackend, realGitBackend } from "../utils/git-backend.ts";
+import { findWorkspaceRoot, listWorktreeDirs } from "../utils/workspace.ts";
+import { readConfig } from "../utils/config.ts";
+import pkg from "../../package.json" with { type: "json" };
 
-async function pathExists(path: string): Promise<boolean> {
-  try {
-    await stat(path);
-    return true;
-  } catch {
-    return false;
+function printStatus(workspaceRoot: string, orgUrl: string | undefined, groups: string[]): void {
+  const lines: string[] = [
+    `version: ${pkg.version}`,
+    `root: ${workspaceRoot}`,
+  ];
+  if (orgUrl) {
+    lines.push(`org: ${orgUrl}`);
   }
+  lines.push("workspaces:");
+  if (groups.length === 0) {
+    lines.push("  (none)");
+  } else {
+    for (const name of groups) {
+      lines.push(`  - ${name}`);
+    }
+  }
+  console.log(lines.join("\n"));
 }
 
-export function makeStatusCommand(git: GitBackend = realGitBackend) {
+export function makeStatusCommand() {
   return defineCommand({
     meta: {
       name: "status",
-      description: "Show workspace status: workspaces, apps, and branches",
+      description: "Print jade version, workspace root, org URL, and workspace groups",
     },
     args: {
       workspace: {
@@ -29,61 +37,21 @@ export function makeStatusCommand(git: GitBackend = realGitBackend) {
       },
     },
     async run({ args }) {
-      intro(`Jade Workspace Status`);
-
       const workspaceRoot = args.workspace
         ? resolve(args.workspace as string)
         : await findWorkspaceRoot();
 
       if (!workspaceRoot) {
-        cancel(`Not in a jade workspace. Run 'jade init' first.`);
+        console.error("jade status: not in a jade workspace (no .bare/). Run `jade init` first.");
         process.exit(1);
       }
 
       try {
         const config = await readConfig(workspaceRoot);
-        const worktreeDirs = await listWorktreeDirs(workspaceRoot);
-        const bareRepos = await listBareRepos(workspaceRoot);
-
-        const groupLines = worktreeDirs.length === 0
-          ? [`No workspaces yet. Use 'jade workspace add <name>' to create one.`]
-          : worktreeDirs.map((d) => `• ${d}/`);
-
-        note(groupLines.join("\n"), "Workspaces");
-
-        if (bareRepos.length === 0) {
-          note(`No apps yet. Use 'jade add <url>' to add apps.`, "Apps");
-        } else {
-          const appLines: string[] = [];
-          for (const appName of bareRepos) {
-            appLines.push(`• ${appName}`);
-            for (const dirName of worktreeDirs) {
-              const appPath = resolve(getWorktreeGroupPath(workspaceRoot, dirName), appName);
-              if (await pathExists(appPath)) {
-                try {
-                  const branch = await git.currentBranch(appPath);
-                  appLines.push(`    ${dirName.padEnd(20)} → ${branch}`);
-                } catch {
-                  appLines.push(`    ${dirName.padEnd(20)} → (error)`);
-                }
-              }
-            }
-          }
-          note(appLines.join("\n"), "Apps");
-        }
-
-        const header = [
-          `Workspace: ${workspaceRoot}`,
-          ...(config.orgUrl ? [`Organization: ${config.orgUrl}`] : []),
-        ];
-        const appNames = getAppNames(config);
-        if (appNames.length > 0) {
-          header.push(`Registered: ${appNames.join(", ")}`);
-        }
-
-        outro(header.join("\n"));
+        const groups = await listWorktreeDirs(workspaceRoot);
+        printStatus(workspaceRoot, config.orgUrl, groups);
       } catch (error) {
-        cancel(`Failed to get status: ${error}`);
+        console.error(`jade status: ${error}`);
         process.exit(1);
       }
     },
