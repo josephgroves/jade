@@ -8,6 +8,7 @@ import checkout from "./src/commands/checkout.ts";
 import status from "./src/commands/status.ts";
 import update from "./src/commands/update.ts";
 import skills from "./src/commands/skills.ts";
+import env from "./src/commands/env.ts";
 
 const main = defineCommand({
   meta: {
@@ -24,6 +25,7 @@ const main = defineCommand({
     status,
     update,
     skills,
+    env,
   },
 });
 

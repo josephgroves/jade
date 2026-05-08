@@ -11,6 +11,9 @@ export interface WorktreeInfo {
  */
 export async function gitCloneBare(url: string, destPath: string): Promise<void> {
   await $`git clone --bare ${url} ${destPath}`;
+  // `git clone --bare` omits the fetch refspec, so `git fetch` can't populate
+  // refs/remotes/origin/*. Worktrees need those refs to pull updates from main.
+  await $`git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"`.cwd(destPath);
 }
 
 /**

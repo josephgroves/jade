@@ -5,6 +5,7 @@ import { $ } from "bun";
 import { intro, outro, cancel, log, spinner, multiselect, isCancel } from "@clack/prompts";
 import { findWorkspaceRoot, getBarePath, getWorktreeGroupPath, listBareRepos, listWorktreeDirs } from "../utils/workspace.ts";
 import { type GitBackend, realGitBackend } from "../utils/git-backend.ts";
+import { copyEnvToWorktree } from "../utils/env.ts";
 
 async function pathExists(path: string): Promise<boolean> {
   try {
@@ -130,8 +131,19 @@ export function makeWorkspaceAddCommand(git: GitBackend = realGitBackend, select
 
         s.stop(`Apps added`);
 
+        const envCopied: string[] = [];
+        for (const appName of selectedApps) {
+          const appWorktreePath = resolve(worktreeDirPath, appName);
+          if (await copyEnvToWorktree(workspaceRoot, appName, appWorktreePath)) {
+            envCopied.push(appName);
+          }
+        }
+
         if (created.length > 0) {
           log.success(`Created in workspace/${name}/: ${created.join(", ")}`);
+        }
+        if (envCopied.length > 0) {
+          log.success(`Copied .env for: ${envCopied.join(", ")}`);
         }
         if (skipped.length > 0) {
           log.warn(`Skipped: ${skipped.join(", ")}`);
