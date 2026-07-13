@@ -23,6 +23,10 @@ function printStatus(workspaceRoot: string, orgUrl: string | undefined, groups: 
   console.log(lines.join("\n"));
 }
 
+function printStatusJson(workspaceRoot: string, orgUrl: string | undefined, groups: string[]): void {
+  console.log(JSON.stringify({ version: pkg.version, root: workspaceRoot, orgUrl, groups }));
+}
+
 export function makeStatusCommand() {
   return defineCommand({
     meta: {
@@ -34,6 +38,11 @@ export function makeStatusCommand() {
         type: "string",
         alias: "w",
         description: "Workspace root path",
+      },
+      json: {
+        type: "boolean",
+        description: "Print machine-readable JSON instead of plain text",
+        default: false,
       },
     },
     async run({ args }) {
@@ -49,7 +58,11 @@ export function makeStatusCommand() {
       try {
         const config = await readConfig(workspaceRoot);
         const groups = await listWorktreeDirs(workspaceRoot);
-        printStatus(workspaceRoot, config.orgUrl, groups);
+        if (args.json) {
+          printStatusJson(workspaceRoot, config.orgUrl, groups);
+        } else {
+          printStatus(workspaceRoot, config.orgUrl, groups);
+        }
       } catch (error) {
         console.error(`jade status: ${error}`);
         process.exit(1);

@@ -206,6 +206,29 @@ describe("workspace list command", () => {
 
     expect(logs.some((l) => l.includes("main") || l.includes("Workspaces"))).toBe(true);
   });
+
+  test("--json outputs groups and per-app branches", async () => {
+    tempDir = await createTempDir();
+    const workspacePath = join(tempDir.path, "ws");
+    await initCommand.run!({ args: { path: workspacePath } } as any);
+
+    const { git } = createMockGitBackend();
+    const addCmd = makeAddCommand(git);
+    const listCmd = makeWorkspaceListCommand(git);
+
+    await addCmd.run!({
+      args: { repoNameOrUrl: "https://github.com/org/app", name: "app", workspace: workspacePath },
+    } as any);
+
+    const logs = await withCapturedConsole(() =>
+      listCmd.run!({ args: { workspace: workspacePath, json: true } } as any)
+    );
+
+    const parsed = JSON.parse(logs.join(""));
+    expect(parsed.groups).toHaveLength(1);
+    expect(parsed.groups[0].name).toBe("main");
+    expect(parsed.groups[0].apps).toEqual([{ name: "app", branch: expect.any(String) }]);
+  });
 });
 
 describe("workspace remove command", () => {

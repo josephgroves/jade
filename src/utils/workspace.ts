@@ -1,4 +1,4 @@
-import { resolve, dirname } from "path";
+import { resolve, dirname, relative, sep } from "path";
 import { stat } from "fs/promises";
 
 /**
@@ -66,6 +66,22 @@ export function getWorktreeContainerPath(workspaceRoot: string): string {
 export function getWorktreeGroupPath(workspaceRoot: string, groupName: string): string {
   if (groupName === "main") return resolve(workspaceRoot, "main");
   return resolve(workspaceRoot, "workspace", groupName);
+}
+
+/**
+ * Determine which worktree group a path lives in, relative to the workspace root.
+ * "main" lives at <root>/main; all other groups live at <root>/workspace/<name>.
+ * Returns null when the path is outside any group (e.g. the workspace root itself,
+ * the .bare directory, or a path outside the workspace).
+ */
+export function getCurrentGroup(workspaceRoot: string, path: string): string | null {
+  const rel = relative(workspaceRoot, resolve(path));
+  if (rel === "" || rel.startsWith("..")) return null;
+
+  const parts = rel.split(sep);
+  if (parts[0] === "main") return "main";
+  if (parts[0] === "workspace" && parts[1]) return parts[1];
+  return null;
 }
 
 /**
