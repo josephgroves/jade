@@ -22,3 +22,9 @@ id = "board"
 title = "Jade board"
 placement = "overlay"
 command = ["bun", "panes/board.ts"]
+
+[[panes]]
+id = "switcher"
+title = "Jade: Switch workspace"
+placement = "overlay"
+command = ["bun", "panes/switcher.ts"]
