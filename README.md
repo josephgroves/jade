@@ -119,8 +119,29 @@ requiring you to type `jade` commands by hand:
 - **Pane**: "Jade board" — an interactive overlay listing every workspace group and its
   per-app branches; pick one to open it as tabs, or create a new feature workspace from
   the same picker.
+- **Pane**: "Jade: Switch workspace" — a lightweight quick-switch overlay. It lists every
+  group, marks which are **already open** in the current herdr session, and floats those
+  to the top. Pick an open one and it **focuses that workspace instantly** (via
+  `herdr workspace focus`, no jade spin-up); pick a closed one and it runs the full
+  `jade open` to create the tabs. Unlike the board, it skips per-app git lookups (backed
+  by `jade status --json`, a plain directory scan) so it stays snappy, and it has no
+  create-new flow — it's purely for jumping between workspaces.
 
-Install it with:
+Bind a key to summon the switcher by adding to `~/.config/herdr/config.toml`:
+
+```toml
+[[keys.command]]
+key = "prefix+shift+s"
+type = "shell"
+command = 'herdr plugin pane open --plugin apptegy.jade --entrypoint switcher --placement overlay --focus --env JADE_CWD="$HERDR_ACTIVE_PANE_CWD"'
+description = "Jade: switch workspace"
+```
+
+(`--env JADE_CWD=...` forwards the focused pane's directory so the switcher finds the
+workspace root regardless of the plugin's own cwd.) Run `herdr server reload-config`
+to apply it.
+
+Install the plugin with:
 
 ```bash
 herdr plugin install <org>/jade/herdr   # once published on GitHub
@@ -128,9 +149,10 @@ herdr plugin link /path/to/jade/herdr   # for local development
 ```
 
 Every plugin script is a thin wrapper that shells out to the `jade` binary on `PATH`
-(override with `JADE_BIN_PATH`) — no jade logic is duplicated in the plugin.
-`jade status --json` and `jade workspace list --json` back the board pane with
-structured data.
+(override with `JADE_BIN_PATH`) — no jade logic is duplicated in the plugin. Open-state
+detection queries herdr directly (`herdr workspace list`, matching workspace labels to
+group names), which is herdr UI concern, not jade logic. `jade status --json` and
+`jade workspace list --json` back the panes with structured data.
 
 ## Configuration
 
