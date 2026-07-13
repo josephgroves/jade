@@ -65,10 +65,8 @@ export function makeUpdateCommand(git: GitBackend = realGitBackend) {
 
         if (!await pathExists(appWorktreePath)) continue;
 
-        s?.start(`Fetching ${appName}`);
+        s?.start(`Updating ${appName}`);
         try {
-          await git.fetch(bareRepoPath);
-          s?.message(`Pulling ${appName}`);
           await git.pullFF(appWorktreePath);
           updated.push(appName);
           s?.stop(`Updated ${appName}`);
