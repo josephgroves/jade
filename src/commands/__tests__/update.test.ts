@@ -13,7 +13,7 @@ describe("update command", () => {
     if (tempDir) await tempDir.cleanup();
   });
 
-  test("fetches and pulls all apps in main workspace", async () => {
+  test("pulls all apps in main workspace", async () => {
     tempDir = await createTempDir();
     const workspacePath = join(tempDir.path, "ws");
     await initCommand.run!({ args: { path: workspacePath } } as any);
@@ -33,10 +33,10 @@ describe("update command", () => {
 
     await updateCmd.run!({ args: { workspace: workspacePath } } as any);
 
-    const fetchCalls = calls.filter((c) => c.method === "fetch");
+    // pullFF now does `git pull --prune origin <branch>`, which fetches as
+    // part of the pull — no separate fetch step is issued.
     const pullCalls = calls.filter((c) => c.method === "pullFF");
 
-    expect(fetchCalls.length).toBe(2);
     expect(pullCalls.length).toBe(2);
   });
 

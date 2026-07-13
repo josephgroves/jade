@@ -82,4 +82,25 @@ describe("status command", () => {
     expect(out).toContain("- main");
     expect(out).toContain("- feat-auth");
   });
+
+  test("--json prints machine-readable status", async () => {
+    tempDir = await createTempDir();
+    const workspacePath = join(tempDir.path, "ws");
+    await initCommand.run!({
+      args: { path: workspacePath, orgUrl: "https://github.com/acme" },
+    } as any);
+
+    const statusCmd = makeStatusCommand();
+    const logs = await withCapturedConsole(() =>
+      statusCmd.run!({ args: { workspace: workspacePath, json: true } } as any)
+    );
+
+    const parsed = JSON.parse(logs.join(""));
+    expect(parsed).toEqual({
+      version: pkg.version,
+      root: workspacePath,
+      orgUrl: "https://github.com/acme",
+      groups: ["main"],
+    });
+  });
 });

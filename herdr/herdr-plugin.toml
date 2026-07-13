@@ -1,0 +1,24 @@
+id = "apptegy.jade"
+name = "Jade Workspaces"
+version = "0.1.0"
+min_herdr_version = "0.7.0"
+description = "Manage jade multi-repo workspaces from herdr: open groups as tabs, sync env files, and browse/create workspaces from a board pane."
+platforms = ["linux", "macos", "windows"]
+
+[[actions]]
+id = "open-group"
+title = "Jade: Open workspace group"
+contexts = ["workspace"]
+command = ["bun", "actions/open-group.ts"]
+
+[[actions]]
+id = "sync-env"
+title = "Jade: Sync env files"
+contexts = ["workspace"]
+command = ["bun", "actions/sync-env.ts"]
+
+[[panes]]
+id = "board"
+title = "Jade board"
+placement = "overlay"
+command = ["bun", "panes/board.ts"]

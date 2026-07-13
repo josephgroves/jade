@@ -69,18 +69,23 @@ export async function gitWorktreeAdd(
       // Branch exists - try to checkout
       try {
         await $`git worktree add ${worktreePath} ${branch}`.cwd(bareRepoPath);
+        // Best-effort: only succeeds if origin/<branch> exists on the remote
+        await $`git branch --set-upstream-to=origin/${branch} ${branch}`.cwd(worktreePath).nothrow().quiet();
         return branch;
       } catch (error) {
         // Failed to checkout (branch already checked out or other conflict)
         // Generate unique name and create from the original branch
         const uniqueName = await generateUniqueBranchName(bareRepoPath, branch);
         await $`git worktree add ${worktreePath} -b ${uniqueName} ${branch}`.cwd(bareRepoPath);
+        await $`git branch --set-upstream-to=origin/${branch} ${uniqueName}`.cwd(worktreePath).nothrow().quiet();
         return uniqueName;
       }
     } else {
       // Branch doesn't exist, try to create it
       try {
         await $`git worktree add ${worktreePath} -b ${branch}`.cwd(bareRepoPath);
+        // Best-effort: only succeeds if origin/<branch> exists on the remote
+        await $`git branch --set-upstream-to=origin/${branch} ${branch}`.cwd(worktreePath).nothrow().quiet();
         return branch;
       } catch (error) {
         // Failed to create (hierarchical conflict like test vs test/something)
@@ -94,6 +99,8 @@ export async function gitWorktreeAdd(
     // No branch specified, use the repository's default branch
     const defaultBranch = await gitGetDefaultBranch(bareRepoPath);
     await $`git worktree add ${worktreePath} ${defaultBranch}`.cwd(bareRepoPath);
+    // Best-effort: only succeeds if origin/<branch> exists on the remote
+    await $`git branch --set-upstream-to=origin/${defaultBranch} ${defaultBranch}`.cwd(worktreePath).nothrow().quiet();
     return defaultBranch;
   }
 }
@@ -222,7 +229,8 @@ export async function gitFetch(bareRepoPath: string): Promise<void> {
  * Fast-forward pull in a worktree directory
  */
 export async function gitPullFF(cwd: string): Promise<void> {
-  await $`git pull --ff-only`.cwd(cwd);
+  const branch = (await $`git rev-parse --abbrev-ref HEAD`.cwd(cwd).text()).trim();
+  await $`git pull --ff-only --prune origin ${branch}`.cwd(cwd);
 }
 
 /**
