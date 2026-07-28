@@ -54,7 +54,7 @@ async function main() {
   const listResult = jadeCaptured(["workspace", "list", "--json"], cwd);
 
   if (listResult.status !== 0) {
-    s.stop("Could not read workspaces", 1);
+    s.error("Could not read workspaces");
     await waitToClose(
       `Not a jade workspace here (${cwd}).\nRun 'jade init', or open this pane from inside a jade-managed workspace.`
     );
@@ -65,7 +65,7 @@ async function main() {
   try {
     ({ groups } = JSON.parse(listResult.stdout) as { groups: WorkspaceGroup[] });
   } catch {
-    s.stop("Could not read workspaces", 1);
+    s.error("Could not read workspaces");
     await waitToClose(`Could not parse 'jade workspace list --json' output from ${cwd}.`);
     process.exit(1);
   }
