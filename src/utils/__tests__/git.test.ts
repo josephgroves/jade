@@ -39,6 +39,49 @@ describe("git", () => {
     expect(worktrees.length).toBeGreaterThanOrEqual(0);
   });
 
+  test("gitCloneBare sets the origin fetch refspec", async () => {
+    tempDir = await createTempDir();
+    const sourceRepo = join(tempDir.path, "source");
+    await createLocalGitRepo(sourceRepo);
+    const barePath = join(tempDir.path, "bare");
+    await gitCloneBare(sourceRepo, barePath);
+
+    const refspec = await $`git config --get remote.origin.fetch`.cwd(barePath).text();
+    expect(refspec.trim()).toBe("+refs/heads/*:refs/remotes/origin/*");
+  });
+
+  test("gitCloneBare populates refs/remotes/origin so upstreams can resolve", async () => {
+    // The refspec alone leaves refs/remotes/origin/* empty until something
+    // fetches — which is what makes --set-upstream-to=origin/<branch> resolve.
+    tempDir = await createTempDir();
+    const sourceRepo = join(tempDir.path, "source");
+    await createLocalGitRepo(sourceRepo);
+    const barePath = join(tempDir.path, "bare");
+    await gitCloneBare(sourceRepo, barePath);
+
+    // Bun's shell parser chokes on an unquoted `%(refname)`.
+    const refs = await $`git for-each-ref refs/remotes/origin --format="%(refname)"`
+      .cwd(barePath)
+      .text();
+    expect(refs.trim().length).toBeGreaterThan(0);
+  });
+
+  test("gitWorktreeAdd sets an upstream on the worktree branch", async () => {
+    tempDir = await createTempDir();
+    const sourceRepo = join(tempDir.path, "source");
+    await createLocalGitRepo(sourceRepo);
+    const barePath = join(tempDir.path, "bare");
+    await gitCloneBare(sourceRepo, barePath);
+    const defaultBranch = await gitGetDefaultBranch(barePath);
+    const worktreePath = join(tempDir.path, "wt-upstream");
+    await gitWorktreeAdd(barePath, worktreePath, defaultBranch);
+
+    const upstream = await $`git rev-parse --abbrev-ref --symbolic-full-name @{upstream}`
+      .cwd(worktreePath)
+      .text();
+    expect(upstream.trim()).toBe(`origin/${defaultBranch}`);
+  });
+
   test("gitGetDefaultBranch detects default branch", async () => {
     tempDir = await createTempDir();
     const sourceRepo = join(tempDir.path, "source");

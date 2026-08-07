@@ -50,6 +50,12 @@ export async function gitCloneBare(url: string, destPath: string): Promise<void>
   // `git clone --bare` omits the fetch refspec, so `git fetch` can't populate
   // refs/remotes/origin/*. Worktrees need those refs to pull updates from main.
   await $`git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"`.cwd(destPath);
+  // The refspec only says where fetched refs land — it doesn't create them. Until
+  // something fetches, refs/remotes/origin/* is empty and every
+  // `--set-upstream-to=origin/<branch>` in gitWorktreeAdd silently no-ops, leaving
+  // worktrees with no upstream. Best-effort: the clone already succeeded, so a
+  // remote that briefly can't be re-reached shouldn't fail the whole add.
+  await $`git fetch origin`.cwd(destPath).nothrow().quiet();
 }
 
 /**
