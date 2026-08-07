@@ -29,7 +29,7 @@ To verify that compiled binaries embed Cursor skills text, run **`bun run test:e
 | `jade workspace list` | List all workspaces and their apps/branches |
 | `jade workspace remove <name>` | Remove a workspace (optionally delete branches with `-d`) |
 | `jade checkout <branch>` | Checkout or create (`-c`) a branch in a specific app |
-| `jade status` | Print jade version, workspace root, org URL (if set), and workspace groups |
+| `jade status [name]` | Report a workspace's apps and branches, or the root summary when run outside one (`--root` to force, `--json` for the full report) |
 | `jade open [group]` | Open a worktree group in the [herdr](https://herdr.dev) multiplexer: a root tab plus one tab per app |
 | `jade skills install` | Copy bundled Cursor agent skills into `<project>/.cursor/skills/` |
 
@@ -83,6 +83,23 @@ cd ~/work/my-workspace
 jade workspace remove feat-navigation -d   # -d also deletes the branches
 ```
 
+## Checking on a workspace
+
+`jade status` is contextual — inside a workspace it reports that workspace's apps and the
+branch each is on, marking any that don't match (`[drift]`, `[detached]`):
+
+```console
+$ cd ~/work/my-workspace/workspace/feat-navigation
+$ jade status
+workspace: feat-navigation
+  frontend  feat-navigation
+  backend   feat-navigation-a1b2c3d  [drift]
+```
+
+Pass a name (`jade status feat-auth`) to report a workspace from anywhere, `--root` to
+force the root summary, or `--json` for the full report — working-tree state, `.env` gaps,
+missing apps, and an `attention[]` list pairing each problem with the command that fixes it.
+
 ## Herdr integration
 
 If you use the [herdr](https://herdr.dev) terminal multiplexer, `jade open` opens a
@@ -124,8 +141,8 @@ requiring you to type `jade` commands by hand:
   to the top. Pick an open one and it **focuses that workspace instantly** (via
   `herdr workspace focus`, no jade spin-up); pick a closed one and it runs the full
   `jade open` to create the tabs. Unlike the board, it skips per-app git lookups (backed
-  by `jade status --json`, a plain directory scan) so it stays snappy, and it has no
-  create-new flow — it's purely for jumping between workspaces.
+  by `jade status --json --root`, a plain directory scan) so it stays snappy, and it has
+  no create-new flow — it's purely for jumping between workspaces.
 
 Bind a key to summon the switcher by adding to `~/.config/herdr/config.toml`:
 
@@ -151,7 +168,7 @@ herdr plugin link /path/to/jade/herdr   # for local development
 Every plugin script is a thin wrapper that shells out to the `jade` binary on `PATH`
 (override with `JADE_BIN_PATH`) — no jade logic is duplicated in the plugin. Open-state
 detection queries herdr directly (`herdr workspace list`, matching workspace labels to
-group names), which is herdr UI concern, not jade logic. `jade status --json` and
+group names), which is herdr UI concern, not jade logic. `jade status --json --root` and
 `jade workspace list --json` back the panes with structured data.
 
 ## Configuration

@@ -4,7 +4,7 @@ import { stat } from "fs/promises";
 /**
  * Check if a path exists (file or directory)
  */
-async function pathExists(path: string): Promise<boolean> {
+export async function pathExists(path: string): Promise<boolean> {
   try {
     await stat(path);
     return true;

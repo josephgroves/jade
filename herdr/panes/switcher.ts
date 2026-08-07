@@ -39,9 +39,11 @@ async function main() {
 
   intro("Jade switch");
 
-  // `jade status --json` is just a directory scan (no per-app git calls), so the
-  // switcher stays snappy — the whole point of a quick-switch overlay.
-  const statusResult = jadeCaptured(["status", "--json"], cwd);
+  // `--root` is load-bearing: bare `jade status` is contextual, and our cwd is the
+  // focused pane's — normally inside a workspace — so without it we'd get that
+  // workspace's detail payload (per-app git calls) instead of the group list.
+  // The root view is just a directory scan, which keeps this quick-switch overlay snappy.
+  const statusResult = jadeCaptured(["status", "--json", "--root"], cwd);
   if (statusResult.status !== 0) {
     await waitToClose(
       `Not a jade workspace here (${cwd}).\nRun 'jade init', or summon this from inside a jade-managed workspace.`

@@ -6,6 +6,42 @@ export interface WorktreeInfo {
   commit: string;
 }
 
+export interface WorktreeStatus {
+  staged: number;
+  unstaged: number;
+  untracked: number;
+}
+
+/**
+ * Count staged / unstaged / untracked entries in a worktree.
+ *
+ * Uses the default --untracked-files=normal so an untracked directory collapses
+ * to a single entry instead of enumerating every file beneath it. A file can be
+ * both staged and unstaged (porcelain "MM") and is counted in both — that
+ * distinction is the useful part.
+ */
+export function parseStatusPorcelain(output: string): WorktreeStatus {
+  const status: WorktreeStatus = { staged: 0, unstaged: 0, untracked: 0 };
+
+  for (const line of output.split("\n")) {
+    // Porcelain v1 lines are "XY path"; anything shorter isn't an entry.
+    if (line.length < 3) continue;
+
+    const x = line[0]!;
+    const y = line[1]!;
+
+    if (x === "?" && y === "?") {
+      status.untracked++;
+      continue;
+    }
+
+    if (x !== " ") status.staged++;
+    if (y !== " ") status.unstaged++;
+  }
+
+  return status;
+}
+
 /**
  * Clone a bare repository
  */
@@ -14,6 +50,12 @@ export async function gitCloneBare(url: string, destPath: string): Promise<void>
   // `git clone --bare` omits the fetch refspec, so `git fetch` can't populate
   // refs/remotes/origin/*. Worktrees need those refs to pull updates from main.
   await $`git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"`.cwd(destPath);
+  // The refspec only says where fetched refs land — it doesn't create them. Until
+  // something fetches, refs/remotes/origin/* is empty and every
+  // `--set-upstream-to=origin/<branch>` in gitWorktreeAdd silently no-ops, leaving
+  // worktrees with no upstream. Best-effort: the clone already succeeded, so a
+  // remote that briefly can't be re-reached shouldn't fail the whole add.
+  await $`git fetch origin`.cwd(destPath).nothrow().quiet();
 }
 
 /**
@@ -194,6 +236,14 @@ export async function gitCheckout(
 export async function gitCurrentBranch(cwd: string): Promise<string> {
   const result = await $`git rev-parse --abbrev-ref HEAD`.cwd(cwd).text();
   return result.trim();
+}
+
+/**
+ * Get the working-tree state of a worktree
+ */
+export async function gitStatus(cwd: string): Promise<WorktreeStatus> {
+  const result = await $`git status --porcelain`.cwd(cwd).text();
+  return parseStatusPorcelain(result);
 }
 
 /**
