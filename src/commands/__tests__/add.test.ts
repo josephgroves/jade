@@ -78,7 +78,7 @@ describe("add command", () => {
     expect(config.apps).toContainEqual({ name: "myapp", defaultBranch: "master" });
   });
 
-  test("creates worktrees in all existing groups", async () => {
+  test("only creates a worktree in main, not in other existing groups", async () => {
     tempDir = await createTempDir();
     const workspacePath = await initWorkspace();
     await Bun.write(
@@ -104,6 +104,6 @@ describe("add command", () => {
 
     const { stat } = await import("fs/promises");
     await stat(join(workspacePath, "main", "app"));
-    await stat(join(workspacePath, "workspace", "feat-auth", "app"));
+    await expect(stat(join(workspacePath, "workspace", "feat-auth", "app"))).rejects.toThrow();
   });
 });

@@ -3,7 +3,7 @@ import { resolve } from "path";
 import { stat } from "fs/promises";
 import { $ } from "bun";
 import { intro, outro, cancel, log, spinner } from "@clack/prompts";
-import { findWorkspaceRoot, getBarePath, getWorktreeGroupPath, listWorktreeDirs } from "../utils/workspace.ts";
+import { findWorkspaceRoot, getBarePath, getWorktreeGroupPath } from "../utils/workspace.ts";
 import { addAppToConfig, readConfig } from "../utils/config.ts";
 import { type GitBackend, realGitBackend } from "../utils/git-backend.ts";
 
@@ -126,32 +126,23 @@ export function makeAddCommand(git: GitBackend = realGitBackend) {
           }
         }
 
-        const worktreeDirs = await listWorktreeDirs(workspaceRoot);
         const worktreeSpinner = spinner();
-        worktreeSpinner.start(`Setting up workspaces`);
+        worktreeSpinner.start(`Setting up main workspace`);
 
-        for (const dirName of worktreeDirs) {
-          const groupPath = getWorktreeGroupPath(workspaceRoot, dirName);
-          const worktreePath = resolve(groupPath, appName);
+        const mainGroupPath = getWorktreeGroupPath(workspaceRoot, "main");
+        const mainWorktreePath = resolve(mainGroupPath, appName);
 
-          if (await pathExists(worktreePath)) continue;
-
-          if (!await pathExists(groupPath)) {
-            await $`mkdir -p ${groupPath}`;
+        if (!await pathExists(mainWorktreePath)) {
+          if (!await pathExists(mainGroupPath)) {
+            await $`mkdir -p ${mainGroupPath}`;
           }
 
-          if (dirName === "main") {
-            const branchToUse = defaultBranch || detectedBranch;
-            const actualBranch = await git.worktreeAdd(bareRepoPath, worktreePath, branchToUse);
-            worktreeSpinner.message(`Created main/${appName} (branch: ${actualBranch})`);
-          } else {
-            const actualBranch = await git.worktreeAdd(bareRepoPath, worktreePath, dirName);
-            const branchLabel = actualBranch !== dirName ? `${actualBranch} - conflict resolved` : dirName;
-            worktreeSpinner.message(`Created workspace/${dirName}/${appName} (branch: ${branchLabel})`);
-          }
+          const branchToUse = defaultBranch || detectedBranch;
+          const actualBranch = await git.worktreeAdd(bareRepoPath, mainWorktreePath, branchToUse);
+          worktreeSpinner.message(`Created main/${appName} (branch: ${actualBranch})`);
         }
 
-        worktreeSpinner.stop(`Workspaces ready`);
+        worktreeSpinner.stop(`Main workspace ready`);
 
         await addAppToConfig(workspaceRoot, appName, defaultBranch);
         log.success(`Updated jade.json config`);

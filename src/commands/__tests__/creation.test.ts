@@ -160,7 +160,7 @@ describe("add command — app creation with mock git", () => {
     expect(calls.some((c) => c.method === "getDefaultBranch")).toBe(true);
   });
 
-  test("creates worktrees in all existing workspaces", async () => {
+  test("only creates a worktree in main, not in other existing workspaces", async () => {
     const workspacePath = await initWorkspace();
     const { git } = createMockGitBackend();
     const addCmd = makeAddCommand(git);
@@ -169,16 +169,16 @@ describe("add command — app creation with mock git", () => {
       args: { repoNameOrUrl: "https://github.com/org/app", name: "app", workspace: workspacePath },
     } as any);
 
-    // Manually create a second worktree group dir inside workspace/ so listWorktreeDirs picks it up
+    // Manually create a second worktree group dir inside workspace/
     await mkdir(join(workspacePath, "workspace", "feat-x"), { recursive: true });
 
-    // Add a second app — should create worktrees in both main/ and workspace/feat-x/
+    // Add a second app — should only create a worktree in main/, not workspace/feat-x/
     await addCmd.run!({
       args: { repoNameOrUrl: "https://github.com/org/app2", name: "app2", workspace: workspacePath },
     } as any);
 
     expect(await pathExists(join(workspacePath, "main", "app2"))).toBe(true);
-    expect(await pathExists(join(workspacePath, "workspace", "feat-x", "app2"))).toBe(true);
+    expect(await pathExists(join(workspacePath, "workspace", "feat-x", "app2"))).toBe(false);
   });
 
   test("exits when app already exists in .bare/", async () => {
