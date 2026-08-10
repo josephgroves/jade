@@ -2,21 +2,31 @@
 
 A CLI for managing multi-repo workspaces using git bare repos. Work on multiple branches across multiple repositories simultaneously without cloning anything twice.
 
+This repo is a Bun workspace with two packages:
+
+| Package | Description |
+|---------|-------------|
+| [`packages/cli`](packages/cli) | The `jade` CLI itself |
+| [`packages/herdr`](packages/herdr) | The [herdr](https://herdr.dev) plugin that surfaces jade operations as herdr UI |
+
 ## Install
 
 Requires [Bun](https://bun.sh) (v1.0+) and Git (v2.5+).
 
 ```bash
-# Link globally for development
-bun link
+# Install workspace dependencies
+bun install
 
-# Or compile and install a standalone binary
+# Link the CLI globally for development
+cd packages/cli && bun link
+
+# Or compile and install a standalone binary (from the repo root)
 bun run install-global  # places binary at ~/.local/bin/jade
 ```
 
 Verify with `jade --help`.
 
-To verify that compiled binaries embed Cursor skills text, run **`bun run test:embed`** (optional; skipped in default `bun test` because some environments block `.cursor` creation in spawned processes).
+To verify that compiled binaries embed Cursor skills text, run **`bun run --cwd packages/cli test:embed`** (optional; skipped in default `bun test` because some environments block `.cursor` creation in spawned processes).
 
 ## Features
 
@@ -111,7 +121,7 @@ when herdr sets it. Outside herdr it exits with a hint instead of doing anything
 
 ### Herdr plugin
 
-The `herdr/` directory is a real [herdr plugin](https://herdr.dev/docs/plugins/) that
+The [`packages/herdr`](packages/herdr) directory is a real [herdr plugin](https://herdr.dev/docs/plugins/) that
 closes the loop the other direction — surfacing jade operations as herdr UI instead of
 requiring you to type `jade` commands by hand:
 
@@ -144,8 +154,8 @@ to apply it.
 Install the plugin with:
 
 ```bash
-herdr plugin install <org>/jade/herdr   # once published on GitHub
-herdr plugin link /path/to/jade/herdr   # for local development
+herdr plugin install <org>/jade/packages/herdr   # once published on GitHub
+herdr plugin link /path/to/jade/packages/herdr   # for local development
 ```
 
 Every plugin script is a thin wrapper that shells out to the `jade` binary on `PATH`
