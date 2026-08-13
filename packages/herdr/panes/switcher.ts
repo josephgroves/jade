@@ -39,9 +39,11 @@ async function main() {
 
   intro("Jade switch");
 
-  // `jade status --json` is just a directory scan (no per-app git calls), so the
-  // switcher stays snappy — the whole point of a quick-switch overlay.
-  const statusResult = jadeCaptured(["status", "--json"], cwd);
+  // `jade status --json --all` is just a directory scan (no per-app git calls),
+  // so the switcher stays snappy — the whole point of a quick-switch overlay.
+  // --all is required: plain `jade status --json` now scopes to the current
+  // group, which isn't what a cross-group switcher needs.
+  const statusResult = jadeCaptured(["status", "--json", "--all"], cwd);
   if (statusResult.status !== 0) {
     await waitToClose(
       `Not a jade workspace here (${cwd}).\nRun 'jade init', or summon this from inside a jade-managed workspace.`
@@ -53,7 +55,7 @@ async function main() {
   try {
     ({ groups } = JSON.parse(statusResult.stdout) as { groups: string[] });
   } catch {
-    await waitToClose(`Could not parse 'jade status --json' output from ${cwd}.`);
+    await waitToClose(`Could not parse 'jade status --json --all' output from ${cwd}.`);
     process.exit(1);
   }
 

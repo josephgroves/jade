@@ -200,6 +200,16 @@ export function createMockGitBackend(): MockGitBackend {
     async pullFF(cwd: string): Promise<void> {
       record("pullFF", cwd);
     },
+
+    /**
+     * Simulate a merge: no divergent commits are tracked in mock state, so this
+     * always reports "up-to-date". Override per-test (spread + replace) to
+     * simulate a real merge or a conflict, same pattern as pullFF failures.
+     */
+    async mergeBranch(cwd: string, branch: string): Promise<"merged" | "up-to-date"> {
+      record("mergeBranch", cwd, branch);
+      return "up-to-date";
+    },
   };
 
   return {

@@ -234,6 +234,17 @@ export async function gitPullFF(cwd: string): Promise<void> {
 }
 
 /**
+ * Merge a branch from origin into the currently checked out branch of a worktree.
+ * Assumes refs/remotes/origin/<branch> is already current — call gitFetch first.
+ * Throws (leaving the worktree mid-merge, for manual resolution) on conflict.
+ */
+export async function gitMergeBranch(cwd: string, branch: string): Promise<"merged" | "up-to-date"> {
+  const result = await $`git merge --no-edit origin/${branch}`.cwd(cwd);
+  const output = result.stdout.toString();
+  return /already up to date/i.test(output) ? "up-to-date" : "merged";
+}
+
+/**
  * Delete a branch in a repository
  */
 export async function gitDeleteBranch(

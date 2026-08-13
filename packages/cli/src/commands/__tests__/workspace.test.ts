@@ -4,6 +4,7 @@ import {
   makeWorkspaceAddCommand,
   makeWorkspaceListCommand,
   makeWorkspaceRemoveCommand,
+  makeWorkspaceUpdateCommand,
   type SelectAppsFn,
 } from "../workspace.ts";
 import { makeAddCommand } from "../add.ts";
@@ -309,6 +310,130 @@ describe("workspace remove command", () => {
 
     await expectsExit(() =>
       workspaceRemoveCmd.run!({ args: { name: "main", workspace: workspacePath } } as any)
+    );
+  });
+});
+
+describe("workspace update command", () => {
+  let tempDir: Awaited<ReturnType<typeof createTempDir>>;
+
+  afterEach(async () => {
+    if (tempDir) await tempDir.cleanup();
+  });
+
+  async function setupGroupWithApp(groupName: string) {
+    tempDir = await createTempDir();
+    const workspacePath = join(tempDir.path, "ws");
+    const { fs } = createMockFileSystemBackend();
+    const { config } = createMockConfigBackend();
+    const initCmd = makeInitCommand(fs, config);
+    await initCmd.run!({ args: { path: workspacePath } } as any);
+
+    const { git, calls } = createMockGitBackend();
+    const addCmd = makeAddCommand(git, fs, config);
+    const workspaceAddCmd = makeWorkspaceAddCommand(git, selectAll, fs);
+
+    await addCmd.run!({
+      args: { repoNameOrUrl: "https://github.com/org/app", name: "app", workspace: workspacePath },
+    } as any);
+
+    if (groupName !== "main") {
+      await workspaceAddCmd.run!({ args: { name: groupName, workspace: workspacePath } } as any);
+    }
+
+    return { workspacePath, git, calls, fs, config };
+  }
+
+  test("fetches and merges each app's default branch", async () => {
+    const { workspacePath, git, calls } = await setupGroupWithApp("feat-auth");
+    const updateCmd = makeWorkspaceUpdateCommand(git);
+
+    await updateCmd.run!({ args: { group: "feat-auth", workspace: workspacePath } } as any);
+
+    const methods = calls.map((c) => c.method);
+    expect(methods).toContain("fetch");
+    expect(methods).toContain("mergeBranch");
+  });
+
+  test("reports merged apps", async () => {
+    const { workspacePath, git } = await setupGroupWithApp("feat-auth");
+    const mergingGit = { ...git, mergeBranch: async () => "merged" as const };
+    const updateCmd = makeWorkspaceUpdateCommand(mergingGit);
+
+    const logs = await withCapturedConsole(() =>
+      updateCmd.run!({ args: { group: "feat-auth", workspace: workspacePath } } as any)
+    );
+
+    expect(logs.some((l) => l.includes("Merged: app"))).toBe(true);
+  });
+
+  test("reports apps already up to date", async () => {
+    const { workspacePath, git } = await setupGroupWithApp("feat-auth");
+    const updateCmd = makeWorkspaceUpdateCommand(git);
+
+    const logs = await withCapturedConsole(() =>
+      updateCmd.run!({ args: { group: "feat-auth", workspace: workspacePath } } as any)
+    );
+
+    expect(logs.some((l) => l.includes("Already up to date: app"))).toBe(true);
+  });
+
+  test("reports a merge conflict without stopping other apps", async () => {
+    tempDir = await createTempDir();
+    const workspacePath = join(tempDir.path, "ws");
+    const { fs } = createMockFileSystemBackend();
+    const { config } = createMockConfigBackend();
+    const initCmd = makeInitCommand(fs, config);
+    await initCmd.run!({ args: { path: workspacePath } } as any);
+
+    const { git } = createMockGitBackend();
+    const addCmd = makeAddCommand(git, fs, config);
+    const workspaceAddCmd = makeWorkspaceAddCommand(git, selectAll, fs);
+
+    await addCmd.run!({
+      args: { repoNameOrUrl: "https://github.com/org/alpha", name: "alpha", workspace: workspacePath },
+    } as any);
+    await addCmd.run!({
+      args: { repoNameOrUrl: "https://github.com/org/beta", name: "beta", workspace: workspacePath },
+    } as any);
+    await workspaceAddCmd.run!({ args: { name: "feat-conflict", workspace: workspacePath } } as any);
+
+    const conflictingGit = {
+      ...git,
+      mergeBranch: async (cwd: string, branch: string) => {
+        if (cwd.includes("alpha")) throw new Error("CONFLICT (content): Merge conflict in file.txt");
+        return "merged" as const;
+      },
+    };
+    const updateCmd = makeWorkspaceUpdateCommand(conflictingGit, fs, config);
+
+    const logs = await withCapturedConsole(() =>
+      updateCmd.run!({ args: { group: "feat-conflict", workspace: workspacePath } } as any)
+    );
+
+    const out = logs.join("\n");
+    expect(out).toContain("resolve manually");
+    expect(out).toContain("Failed: alpha");
+    expect(out).toContain("Merged: beta");
+  });
+
+  test("defaults to 'main' when not inside any group and none given", async () => {
+    const { workspacePath, git } = await setupGroupWithApp("main");
+    const updateCmd = makeWorkspaceUpdateCommand(git);
+
+    const logs = await withCapturedConsole(() =>
+      updateCmd.run!({ args: { workspace: workspacePath } } as any)
+    );
+
+    expect(logs.some((l) => l.includes("Updating workspace 'main'"))).toBe(true);
+  });
+
+  test("exits when the requested group does not exist", async () => {
+    const { workspacePath, git } = await setupGroupWithApp("main");
+    const updateCmd = makeWorkspaceUpdateCommand(git);
+
+    await expectsExit(() =>
+      updateCmd.run!({ args: { group: "does-not-exist", workspace: workspacePath } } as any)
     );
   });
 });

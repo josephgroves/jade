@@ -3,6 +3,7 @@ import { join } from "path";
 import { makeStatusCommand } from "../status.ts";
 import { makeAddCommand } from "../add.ts";
 import { makeWorkspaceAddCommand, type SelectAppsFn } from "../workspace.ts";
+import { makeCheckoutCommand } from "../checkout.ts";
 
 const selectAll: SelectAppsFn = async (apps) => apps;
 import {
@@ -22,7 +23,7 @@ describe("status command", () => {
     if (tempDir) await tempDir.cleanup();
   });
 
-  test("prints version, root, and workspaces", async () => {
+  test("scoped to current group by default: prints version, workspace, and apps", async () => {
     tempDir = await createTempDir();
     const workspacePath = join(tempDir.path, "ws");
     const { fs } = createMockFileSystemBackend();
@@ -30,7 +31,13 @@ describe("status command", () => {
     const initCmd = makeInitCommand(fs, config);
     await initCmd.run!({ args: { path: workspacePath } } as any);
 
-    const statusCmd = makeStatusCommand(fs, config);
+    const { git } = createMockGitBackend();
+    const addCmd = makeAddCommand(git, fs, config);
+    const statusCmd = makeStatusCommand(git, fs, config);
+
+    await addCmd.run!({
+      args: { repoNameOrUrl: "https://github.com/org/app1", name: "app1", workspace: workspacePath },
+    } as any);
 
     const logs = await withCapturedConsole(() =>
       statusCmd.run!({ args: { workspace: workspacePath } } as any)
@@ -38,9 +45,10 @@ describe("status command", () => {
 
     const out = logs.join("\n");
     expect(out).toContain(`version: ${pkg.version}`);
-    expect(out).toContain(`root: ${workspacePath}`);
-    expect(out).toContain("workspaces:");
-    expect(out).toContain("- main");
+    expect(out).toContain("workspace: main");
+    expect(out).toContain("apps:");
+    expect(out).toContain("- app1 (main)");
+    expect(out).not.toContain("root:");
     expect(out).not.toContain("org:");
   });
 
@@ -54,7 +62,8 @@ describe("status command", () => {
       args: { path: workspacePath, orgUrl: "https://github.com/acme" },
     } as any);
 
-    const statusCmd = makeStatusCommand(fs, config);
+    const { git } = createMockGitBackend();
+    const statusCmd = makeStatusCommand(git, fs, config);
     const logs = await withCapturedConsole(() =>
       statusCmd.run!({ args: { workspace: workspacePath } } as any)
     );
@@ -62,7 +71,34 @@ describe("status command", () => {
     expect(logs.join("\n")).toContain("org: https://github.com/acme");
   });
 
-  test("lists multiple workspace groups", async () => {
+  test("shows the branch checked out for each app in the current group", async () => {
+    tempDir = await createTempDir();
+    const workspacePath = join(tempDir.path, "ws");
+    const { fs } = createMockFileSystemBackend();
+    const { config } = createMockConfigBackend();
+    const initCmd = makeInitCommand(fs, config);
+    await initCmd.run!({ args: { path: workspacePath } } as any);
+
+    const { git } = createMockGitBackend();
+    const addCmd = makeAddCommand(git, fs, config);
+    const checkoutCmd = makeCheckoutCommand(git, fs);
+    const statusCmd = makeStatusCommand(git, fs, config);
+
+    await addCmd.run!({
+      args: { repoNameOrUrl: "https://github.com/org/app1", name: "app1", workspace: workspacePath },
+    } as any);
+    await checkoutCmd.run!({
+      args: { branch: "feat-branch", create: true, app: join(workspacePath, "main", "app1"), workspace: workspacePath },
+    } as any);
+
+    const logs = await withCapturedConsole(() =>
+      statusCmd.run!({ args: { workspace: workspacePath } } as any)
+    );
+
+    expect(logs.join("\n")).toContain("- app1 (feat-branch)");
+  });
+
+  test("group positional selects a specific group", async () => {
     tempDir = await createTempDir();
     const workspacePath = join(tempDir.path, "ws");
     const { fs } = createMockFileSystemBackend();
@@ -73,28 +109,54 @@ describe("status command", () => {
     const { git } = createMockGitBackend();
     const addCmd = makeAddCommand(git, fs, config);
     const workspaceAddCmd = makeWorkspaceAddCommand(git, selectAll, fs);
-    const statusCmd = makeStatusCommand(fs, config);
+    const statusCmd = makeStatusCommand(git, fs, config);
 
     await addCmd.run!({
       args: { repoNameOrUrl: "https://github.com/org/app1", name: "app1", workspace: workspacePath },
-    } as any);
-    await addCmd.run!({
-      args: { repoNameOrUrl: "https://github.com/org/app2", name: "app2", workspace: workspacePath },
     } as any);
     await workspaceAddCmd.run!({
       args: { name: "feat-auth", workspace: workspacePath },
     } as any);
 
     const logs = await withCapturedConsole(() =>
-      statusCmd.run!({ args: { workspace: workspacePath } } as any)
+      statusCmd.run!({ args: { group: "feat-auth", workspace: workspacePath } } as any)
+    );
+
+    expect(logs.join("\n")).toContain("workspace: feat-auth");
+  });
+
+  test("--all lists every workspace group instead of scoping to one", async () => {
+    tempDir = await createTempDir();
+    const workspacePath = join(tempDir.path, "ws");
+    const { fs } = createMockFileSystemBackend();
+    const { config } = createMockConfigBackend();
+    const initCmd = makeInitCommand(fs, config);
+    await initCmd.run!({ args: { path: workspacePath } } as any);
+
+    const { git } = createMockGitBackend();
+    const addCmd = makeAddCommand(git, fs, config);
+    const workspaceAddCmd = makeWorkspaceAddCommand(git, selectAll, fs);
+    const statusCmd = makeStatusCommand(git, fs, config);
+
+    await addCmd.run!({
+      args: { repoNameOrUrl: "https://github.com/org/app1", name: "app1", workspace: workspacePath },
+    } as any);
+    await workspaceAddCmd.run!({
+      args: { name: "feat-auth", workspace: workspacePath },
+    } as any);
+
+    const logs = await withCapturedConsole(() =>
+      statusCmd.run!({ args: { workspace: workspacePath, all: true } } as any)
     );
 
     const out = logs.join("\n");
+    expect(out).toContain(`root: ${workspacePath}`);
+    expect(out).toContain("workspaces:");
     expect(out).toContain("- main");
     expect(out).toContain("- feat-auth");
   });
 
-  test("--json prints machine-readable status", async () => {
+  test("--json scopes to the current group by default", async () => {
     tempDir = await createTempDir();
     const workspacePath = join(tempDir.path, "ws");
     const { fs } = createMockFileSystemBackend();
@@ -104,7 +166,14 @@ describe("status command", () => {
       args: { path: workspacePath, orgUrl: "https://github.com/acme" },
     } as any);
 
-    const statusCmd = makeStatusCommand(fs, config);
+    const { git } = createMockGitBackend();
+    const addCmd = makeAddCommand(git, fs, config);
+    const statusCmd = makeStatusCommand(git, fs, config);
+
+    await addCmd.run!({
+      args: { repoNameOrUrl: "https://github.com/org/app1", name: "app1", workspace: workspacePath },
+    } as any);
+
     const logs = await withCapturedConsole(() =>
       statusCmd.run!({ args: { workspace: workspacePath, json: true } } as any)
     );
@@ -113,8 +182,44 @@ describe("status command", () => {
     expect(parsed).toEqual({
       version: pkg.version,
       root: workspacePath,
+      workspace: "main",
       orgUrl: "https://github.com/acme",
-      groups: ["main"],
+      apps: [{ name: "app1", branch: "main" }],
+    });
+  });
+
+  test("--json --all prints every group — the shape herdr's switcher pane depends on", async () => {
+    tempDir = await createTempDir();
+    const workspacePath = join(tempDir.path, "ws");
+    const { fs } = createMockFileSystemBackend();
+    const { config } = createMockConfigBackend();
+    const initCmd = makeInitCommand(fs, config);
+    await initCmd.run!({
+      args: { path: workspacePath, orgUrl: "https://github.com/acme" },
+    } as any);
+
+    const { git } = createMockGitBackend();
+    const addCmd = makeAddCommand(git, fs, config);
+    const workspaceAddCmd = makeWorkspaceAddCommand(git, selectAll, fs);
+    const statusCmd = makeStatusCommand(git, fs, config);
+
+    await addCmd.run!({
+      args: { repoNameOrUrl: "https://github.com/org/app1", name: "app1", workspace: workspacePath },
+    } as any);
+    await workspaceAddCmd.run!({
+      args: { name: "feat-auth", workspace: workspacePath },
+    } as any);
+
+    const logs = await withCapturedConsole(() =>
+      statusCmd.run!({ args: { workspace: workspacePath, json: true, all: true } } as any)
+    );
+
+    const parsed = JSON.parse(logs.join(""));
+    expect(parsed).toEqual({
+      version: pkg.version,
+      root: workspacePath,
+      orgUrl: "https://github.com/acme",
+      groups: ["main", "feat-auth"],
     });
   });
 });
