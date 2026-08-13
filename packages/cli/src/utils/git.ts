@@ -1,4 +1,5 @@
-import { $ } from "bun";
+import { fsRemove } from "./fs.ts";
+import { realGitProcessRunner } from "./git-process.ts";
 
 export interface WorktreeInfo {
   path: string;
@@ -10,17 +11,20 @@ export interface WorktreeInfo {
  * Clone a bare repository
  */
 export async function gitCloneBare(url: string, destPath: string): Promise<void> {
-  await $`git clone --bare ${url} ${destPath}`;
+  await realGitProcessRunner.run(["clone", "--bare", url, destPath]);
   // `git clone --bare` omits the fetch refspec, so `git fetch` can't populate
   // refs/remotes/origin/*. Worktrees need those refs to pull updates from main.
-  await $`git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"`.cwd(destPath);
+  await realGitProcessRunner.run(
+    ["config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"],
+    { cwd: destPath }
+  );
 }
 
 /**
  * Remove a bare repository directory
  */
 export async function gitRemoveBareRepo(barePath: string): Promise<void> {
-  await $`rm -rf ${barePath}`;
+  await fsRemove(barePath);
 }
 
 /**
@@ -28,10 +32,10 @@ export async function gitRemoveBareRepo(barePath: string): Promise<void> {
  */
 export async function gitGetDefaultBranch(bareRepoPath: string): Promise<string> {
   try {
-    const result = await $`git symbolic-ref HEAD`.cwd(bareRepoPath).text();
-    return result.trim().replace("refs/heads/", "");
+    const { stdout } = await realGitProcessRunner.run(["symbolic-ref", "HEAD"], { cwd: bareRepoPath });
+    return stdout.trim().replace("refs/heads/", "");
   } catch {
-    const branches = await $`git branch`.cwd(bareRepoPath).text();
+    const { stdout: branches } = await realGitProcessRunner.run(["branch"], { cwd: bareRepoPath });
 
     if (branches.includes("main")) return "main";
     if (branches.includes("master")) return "master";
@@ -63,44 +67,62 @@ export async function gitWorktreeAdd(
 ): Promise<string | undefined> {
   if (branch) {
     // Check if branch already exists
-    const branches = await $`git branch --list ${branch}`.cwd(bareRepoPath).text();
-    
+    const { stdout: branches } = await realGitProcessRunner.run(["branch", "--list", branch], {
+      cwd: bareRepoPath,
+    });
+
     if (branches.trim()) {
       // Branch exists - try to checkout
       try {
-        await $`git worktree add ${worktreePath} ${branch}`.cwd(bareRepoPath);
+        await realGitProcessRunner.run(["worktree", "add", worktreePath, branch], { cwd: bareRepoPath });
         // Best-effort: only succeeds if origin/<branch> exists on the remote
-        await $`git branch --set-upstream-to=origin/${branch} ${branch}`.cwd(worktreePath).nothrow().quiet();
+        await realGitProcessRunner.run(
+          ["branch", `--set-upstream-to=origin/${branch}`, branch],
+          { cwd: worktreePath, nothrow: true }
+        );
         return branch;
       } catch (error) {
         // Failed to checkout (branch already checked out or other conflict)
         // Generate unique name and create from the original branch
         const uniqueName = await generateUniqueBranchName(bareRepoPath, branch);
-        await $`git worktree add ${worktreePath} -b ${uniqueName} ${branch}`.cwd(bareRepoPath);
-        await $`git branch --set-upstream-to=origin/${branch} ${uniqueName}`.cwd(worktreePath).nothrow().quiet();
+        await realGitProcessRunner.run(["worktree", "add", worktreePath, "-b", uniqueName, branch], {
+          cwd: bareRepoPath,
+        });
+        await realGitProcessRunner.run(
+          ["branch", `--set-upstream-to=origin/${branch}`, uniqueName],
+          { cwd: worktreePath, nothrow: true }
+        );
         return uniqueName;
       }
     } else {
       // Branch doesn't exist, try to create it
       try {
-        await $`git worktree add ${worktreePath} -b ${branch}`.cwd(bareRepoPath);
+        await realGitProcessRunner.run(["worktree", "add", worktreePath, "-b", branch], { cwd: bareRepoPath });
         // Best-effort: only succeeds if origin/<branch> exists on the remote
-        await $`git branch --set-upstream-to=origin/${branch} ${branch}`.cwd(worktreePath).nothrow().quiet();
+        await realGitProcessRunner.run(
+          ["branch", `--set-upstream-to=origin/${branch}`, branch],
+          { cwd: worktreePath, nothrow: true }
+        );
         return branch;
       } catch (error) {
         // Failed to create (hierarchical conflict like test vs test/something)
         // Generate unique name and create
         const uniqueName = await generateUniqueBranchName(bareRepoPath, branch);
-        await $`git worktree add ${worktreePath} -b ${uniqueName}`.cwd(bareRepoPath);
+        await realGitProcessRunner.run(["worktree", "add", worktreePath, "-b", uniqueName], {
+          cwd: bareRepoPath,
+        });
         return uniqueName;
       }
     }
   } else {
     // No branch specified, use the repository's default branch
     const defaultBranch = await gitGetDefaultBranch(bareRepoPath);
-    await $`git worktree add ${worktreePath} ${defaultBranch}`.cwd(bareRepoPath);
+    await realGitProcessRunner.run(["worktree", "add", worktreePath, defaultBranch], { cwd: bareRepoPath });
     // Best-effort: only succeeds if origin/<branch> exists on the remote
-    await $`git branch --set-upstream-to=origin/${defaultBranch} ${defaultBranch}`.cwd(worktreePath).nothrow().quiet();
+    await realGitProcessRunner.run(
+      ["branch", `--set-upstream-to=origin/${defaultBranch}`, defaultBranch],
+      { cwd: worktreePath, nothrow: true }
+    );
     return defaultBranch;
   }
 }
@@ -109,7 +131,9 @@ export async function gitWorktreeAdd(
  * List all worktrees for a bare repository
  */
 export async function gitWorktreeList(bareRepoPath: string): Promise<WorktreeInfo[]> {
-  const result = await $`git worktree list --porcelain`.cwd(bareRepoPath).text();
+  const { stdout: result } = await realGitProcessRunner.run(["worktree", "list", "--porcelain"], {
+    cwd: bareRepoPath,
+  });
 
   const worktrees: WorktreeInfo[] = [];
   const lines = result.split("\n");
@@ -148,8 +172,8 @@ export async function gitWorktreeList(bareRepoPath: string): Promise<WorktreeInf
  * @param worktreePath - Absolute path to the worktree to remove
  */
 export async function gitWorktreeRemove(bareRepoPath: string, worktreePath: string): Promise<void> {
-  await $`git worktree remove ${worktreePath} -f`.cwd(bareRepoPath);
-  await $`git worktree prune`.cwd(bareRepoPath);
+  await realGitProcessRunner.run(["worktree", "remove", worktreePath, "-f"], { cwd: bareRepoPath });
+  await realGitProcessRunner.run(["worktree", "prune"], { cwd: bareRepoPath });
 }
 
 /**
@@ -168,7 +192,7 @@ export async function isBranchCheckedOutInWorktree(bareRepoPath: string, branch:
  * @param baseName - Base name for the branch
  */
 export async function generateUniqueBranchName(bareRepoPath: string, baseName: string): Promise<string> {
-  const result = await $`git rev-parse HEAD`.cwd(bareRepoPath).text();
+  const { stdout: result } = await realGitProcessRunner.run(["rev-parse", "HEAD"], { cwd: bareRepoPath });
   const shortHash = result.trim().substring(0, 7);
   return `${baseName}-${shortHash}`;
 }
@@ -182,9 +206,9 @@ export async function gitCheckout(
   create: boolean = false
 ): Promise<void> {
   if (create) {
-    await $`git checkout -b ${branch}`.cwd(cwd);
+    await realGitProcessRunner.run(["checkout", "-b", branch], { cwd });
   } else {
-    await $`git checkout ${branch}`.cwd(cwd);
+    await realGitProcessRunner.run(["checkout", branch], { cwd });
   }
 }
 
@@ -192,22 +216,22 @@ export async function gitCheckout(
  * Get current branch name
  */
 export async function gitCurrentBranch(cwd: string): Promise<string> {
-  const result = await $`git rev-parse --abbrev-ref HEAD`.cwd(cwd).text();
-  return result.trim();
+  const { stdout } = await realGitProcessRunner.run(["rev-parse", "--abbrev-ref", "HEAD"], { cwd });
+  return stdout.trim();
 }
 
 /**
  * Commit changes
  */
 export async function gitCommit(cwd: string, message: string): Promise<void> {
-  await $`git commit -m ${message}`.cwd(cwd);
+  await realGitProcessRunner.run(["commit", "-m", message], { cwd });
 }
 
 /**
  * Add files to staging
  */
 export async function gitAdd(cwd: string, files: string[]): Promise<void> {
-  await $`git add ${files}`.cwd(cwd);
+  await realGitProcessRunner.run(["add", ...files], { cwd });
 }
 
 /**
@@ -222,15 +246,16 @@ export async function isBranchCheckedOut(cwd: string, branch: string): Promise<b
  * Fetch all remotes for a bare repository
  */
 export async function gitFetch(bareRepoPath: string): Promise<void> {
-  await $`git fetch --all --prune`.cwd(bareRepoPath);
+  await realGitProcessRunner.run(["fetch", "--all", "--prune"], { cwd: bareRepoPath });
 }
 
 /**
  * Fast-forward pull in a worktree directory
  */
 export async function gitPullFF(cwd: string): Promise<void> {
-  const branch = (await $`git rev-parse --abbrev-ref HEAD`.cwd(cwd).text()).trim();
-  await $`git pull --ff-only --prune origin ${branch}`.cwd(cwd);
+  const { stdout } = await realGitProcessRunner.run(["rev-parse", "--abbrev-ref", "HEAD"], { cwd });
+  const branch = stdout.trim();
+  await realGitProcessRunner.run(["pull", "--ff-only", "--prune", "origin", branch], { cwd });
 }
 
 /**
@@ -239,9 +264,8 @@ export async function gitPullFF(cwd: string): Promise<void> {
  * Throws (leaving the worktree mid-merge, for manual resolution) on conflict.
  */
 export async function gitMergeBranch(cwd: string, branch: string): Promise<"merged" | "up-to-date"> {
-  const result = await $`git merge --no-edit origin/${branch}`.cwd(cwd);
-  const output = result.stdout.toString();
-  return /already up to date/i.test(output) ? "up-to-date" : "merged";
+  const { stdout } = await realGitProcessRunner.run(["merge", "--no-edit", `origin/${branch}`], { cwd });
+  return /already up to date/i.test(stdout) ? "up-to-date" : "merged";
 }
 
 /**
@@ -253,8 +277,8 @@ export async function gitDeleteBranch(
   force: boolean = false
 ): Promise<void> {
   if (force) {
-    await $`git branch -D ${branch}`.cwd(cwd);
+    await realGitProcessRunner.run(["branch", "-D", branch], { cwd });
   } else {
-    await $`git branch -d ${branch}`.cwd(cwd);
+    await realGitProcessRunner.run(["branch", "-d", branch], { cwd });
   }
 }

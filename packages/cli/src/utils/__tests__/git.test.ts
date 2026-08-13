@@ -14,6 +14,7 @@ import {
   gitDeleteBranch,
   gitRemoveBareRepo,
 } from "../git.ts";
+import { GitError } from "../git-process.ts";
 import {
   createTempDir,
   createLocalGitRepo,
@@ -220,5 +221,49 @@ describe("git", () => {
     await gitRemoveBareRepo(barePath);
     const exists = await Bun.file(join(barePath, "HEAD")).exists();
     expect(exists).toBe(false);
+  });
+
+  test("gitCheckout on a nonexistent branch throws a GitError with structured fields", async () => {
+    tempDir = await createTempDir();
+    const sourceRepo = join(tempDir.path, "source");
+    await createLocalGitRepo(sourceRepo);
+    const barePath = join(tempDir.path, "bare");
+    await createBareClone(sourceRepo, barePath);
+    const defaultBranch = await gitGetDefaultBranch(barePath);
+    const wtPath = join(tempDir.path, "wt");
+    await gitWorktreeAdd(barePath, wtPath, defaultBranch);
+
+    let thrown: unknown;
+    try {
+      await gitCheckout(wtPath, "does-not-exist");
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(GitError);
+    const gitError = thrown as GitError;
+    expect(gitError.command).toEqual(["checkout", "does-not-exist"]);
+    expect(gitError.cwd).toBe(wtPath);
+    expect(gitError.exitCode).not.toBe(0);
+    expect(gitError.stderr.length).toBeGreaterThan(0);
+  });
+
+  test("gitWorktreeList throws a GitError when the bare repo path is not a git repository", async () => {
+    tempDir = await createTempDir();
+    const notARepo = join(tempDir.path, "not-a-repo");
+    await Bun.write(join(notARepo, "placeholder.txt"), "");
+
+    let thrown: unknown;
+    try {
+      await gitWorktreeList(notARepo);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(GitError);
+    const gitError = thrown as GitError;
+    expect(gitError.command).toEqual(["worktree", "list", "--porcelain"]);
+    expect(gitError.cwd).toBe(notARepo);
+    expect(gitError.exitCode).not.toBe(0);
   });
 });
