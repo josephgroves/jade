@@ -1,0 +1,30 @@
+{
+  "name": "jade",
+  "version": "0.1.2",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "jade": "./index.ts"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "test:embed": "JADE_VERIFY_COMPILE_EMBED=1 bun test src/commands/__tests__/skills-embed-compile.test.ts",
+    "jade": "bun run index.ts",
+    "build": "bun build --compile ./index.ts --outfile jade",
+    "install-global": "bun run build && mkdir -p ~/.local/bin && mv jade ~/.local/bin/",
+    "uninstall": "rm -f ~/.local/bin/jade && echo '✓ Removed jade from ~/.local/bin'"
+  },
+  "devDependencies": {
+    "@types/bun": "1.3.14",
+    "typescript": "^7.0.2"
+  },
+  "peerDependencies": {
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.7.0",
+    "citty": "^0.2.2"
+  }
+}
