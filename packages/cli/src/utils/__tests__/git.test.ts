@@ -13,6 +13,8 @@ import {
   gitCurrentBranch,
   gitDeleteBranch,
   gitRemoveBareRepo,
+  gitStatus,
+  parseStatusPorcelain,
 } from "../git.ts";
 import { GitError } from "../git-process.ts";
 import {
@@ -36,6 +38,49 @@ describe("git", () => {
     await gitCloneBare(sourceRepo, barePath);
     const worktrees = await gitWorktreeList(barePath);
     expect(worktrees.length).toBeGreaterThanOrEqual(0);
+  });
+
+  test("gitCloneBare sets the origin fetch refspec", async () => {
+    tempDir = await createTempDir();
+    const sourceRepo = join(tempDir.path, "source");
+    await createLocalGitRepo(sourceRepo);
+    const barePath = join(tempDir.path, "bare");
+    await gitCloneBare(sourceRepo, barePath);
+
+    const refspec = await $`git config --get remote.origin.fetch`.cwd(barePath).text();
+    expect(refspec.trim()).toBe("+refs/heads/*:refs/remotes/origin/*");
+  });
+
+  test("gitCloneBare populates refs/remotes/origin so upstreams can resolve", async () => {
+    // The refspec alone leaves refs/remotes/origin/* empty until something
+    // fetches — which is what makes --set-upstream-to=origin/<branch> resolve.
+    tempDir = await createTempDir();
+    const sourceRepo = join(tempDir.path, "source");
+    await createLocalGitRepo(sourceRepo);
+    const barePath = join(tempDir.path, "bare");
+    await gitCloneBare(sourceRepo, barePath);
+
+    // Bun's shell parser chokes on an unquoted `%(refname)`.
+    const refs = await $`git for-each-ref refs/remotes/origin --format="%(refname)"`
+      .cwd(barePath)
+      .text();
+    expect(refs.trim().length).toBeGreaterThan(0);
+  });
+
+  test("gitWorktreeAdd sets an upstream on the worktree branch", async () => {
+    tempDir = await createTempDir();
+    const sourceRepo = join(tempDir.path, "source");
+    await createLocalGitRepo(sourceRepo);
+    const barePath = join(tempDir.path, "bare");
+    await gitCloneBare(sourceRepo, barePath);
+    const defaultBranch = await gitGetDefaultBranch(barePath);
+    const worktreePath = join(tempDir.path, "wt-upstream");
+    await gitWorktreeAdd(barePath, worktreePath, defaultBranch);
+
+    const upstream = await $`git rev-parse --abbrev-ref --symbolic-full-name @{upstream}`
+      .cwd(worktreePath)
+      .text();
+    expect(upstream.trim()).toBe(`origin/${defaultBranch}`);
   });
 
   test("gitGetDefaultBranch detects default branch", async () => {
@@ -265,5 +310,75 @@ describe("git", () => {
     expect(gitError.command).toEqual(["worktree", "list", "--porcelain"]);
     expect(gitError.cwd).toBe(notARepo);
     expect(gitError.exitCode).not.toBe(0);
+  });
+
+  test("gitStatus reports a clean worktree", async () => {
+    tempDir = await createTempDir();
+    const sourceRepo = join(tempDir.path, "source");
+    await createLocalGitRepo(sourceRepo);
+    expect(await gitStatus(sourceRepo)).toEqual({ staged: 0, unstaged: 0, untracked: 0 });
+  });
+
+  test("gitStatus counts staged, unstaged and untracked entries", async () => {
+    tempDir = await createTempDir();
+    const sourceRepo = join(tempDir.path, "source");
+    await createLocalGitRepo(sourceRepo);
+
+    // staged: a new file added to the index
+    await Bun.write(join(sourceRepo, "staged.txt"), "new\n");
+    await $`git add staged.txt`.cwd(sourceRepo);
+    // unstaged: a tracked file modified in the worktree
+    await Bun.write(join(sourceRepo, "README.md"), "# changed\n");
+    // untracked: never added
+    await Bun.write(join(sourceRepo, "loose.txt"), "loose\n");
+
+    expect(await gitStatus(sourceRepo)).toEqual({ staged: 1, unstaged: 1, untracked: 1 });
+  });
+});
+
+describe("parseStatusPorcelain", () => {
+  test("empty output is clean", () => {
+    expect(parseStatusPorcelain("")).toEqual({ staged: 0, unstaged: 0, untracked: 0 });
+    expect(parseStatusPorcelain("\n")).toEqual({ staged: 0, unstaged: 0, untracked: 0 });
+  });
+
+  test("counts untracked entries", () => {
+    expect(parseStatusPorcelain("?? a.txt\n?? b/\n")).toEqual({
+      staged: 0,
+      unstaged: 0,
+      untracked: 2,
+    });
+  });
+
+  test("separates staged from unstaged", () => {
+    expect(parseStatusPorcelain("M  staged.txt\n M unstaged.txt\n")).toEqual({
+      staged: 1,
+      unstaged: 1,
+      untracked: 0,
+    });
+  });
+
+  test("counts a file that is both staged and unstaged in both columns", () => {
+    expect(parseStatusPorcelain("MM both.txt\n")).toEqual({
+      staged: 1,
+      unstaged: 1,
+      untracked: 0,
+    });
+  });
+
+  test("treats a rename as staged", () => {
+    expect(parseStatusPorcelain("R  old.txt -> new.txt\n")).toEqual({
+      staged: 1,
+      unstaged: 0,
+      untracked: 0,
+    });
+  });
+
+  test("counts an unmerged path in both columns", () => {
+    expect(parseStatusPorcelain("UU conflict.txt\n")).toEqual({
+      staged: 1,
+      unstaged: 1,
+      untracked: 0,
+    });
   });
 });

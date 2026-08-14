@@ -1,6 +1,6 @@
 import { mkdir, rm } from "fs/promises";
 import { join } from "path";
-import type { GitBackend, WorktreeInfo } from "../utils/git-backend.ts";
+import type { GitBackend, WorktreeInfo, WorktreeStatus } from "../utils/git-backend.ts";
 
 /**
  * In-memory state that the mock backend tracks per bare repo path.
@@ -12,7 +12,14 @@ export interface MockBareRepoState {
   branches: Set<string>;
   /** Map from worktree path -> branch name for currently checked-out worktrees */
   worktrees: Map<string, string>;
+  /**
+   * Map from worktree path -> working-tree state. Paths absent from this map
+   * report clean, so tests only seed the worktrees they want dirty.
+   */
+  statuses: Map<string, WorktreeStatus>;
 }
+
+const CLEAN: WorktreeStatus = { staged: 0, unstaged: 0, untracked: 0 };
 
 /**
  * Create a MockBareRepoState with sensible defaults.
@@ -22,6 +29,7 @@ export function makeMockBareRepoState(overrides: Partial<MockBareRepoState> = {}
     defaultBranch: "main",
     branches: new Set(overrides.branches ?? ["main"]),
     worktrees: new Map(overrides.worktrees),
+    statuses: new Map(overrides.statuses),
     ...overrides,
   };
 }
@@ -172,6 +180,18 @@ export function createMockGitBackend(): MockGitBackend {
         if (branch) return branch;
       }
       return "main";
+    },
+
+    /**
+     * Return the seeded working-tree state for a worktree path, or clean.
+     */
+    async status(cwd: string): Promise<WorktreeStatus> {
+      record("status", cwd);
+      for (const state of states.values()) {
+        const seeded = state.statuses.get(cwd);
+        if (seeded) return seeded;
+      }
+      return { ...CLEAN };
     },
 
     /**

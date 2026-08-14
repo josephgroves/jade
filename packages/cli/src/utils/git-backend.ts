@@ -9,6 +9,12 @@ export interface WorktreeInfo {
   commit: string;
 }
 
+export interface WorktreeStatus {
+  staged: number;
+  unstaged: number;
+  untracked: number;
+}
+
 export interface GitBackend {
   cloneBare(url: string, destPath: string): Promise<void>;
   getDefaultBranch(bareRepoPath: string): Promise<string>;
@@ -17,6 +23,7 @@ export interface GitBackend {
   worktreeRemove(bareRepoPath: string, worktreePath: string): Promise<void>;
   checkout(cwd: string, branch: string, create?: boolean): Promise<void>;
   currentBranch(cwd: string): Promise<string>;
+  status(cwd: string): Promise<WorktreeStatus>;
   deleteBranch(cwd: string, branch: string, force?: boolean): Promise<void>;
   removeBareRepo(barePath: string): Promise<void>;
   fetch(bareRepoPath: string): Promise<void>;
@@ -32,6 +39,7 @@ import {
   gitWorktreeRemove,
   gitCheckout,
   gitCurrentBranch,
+  gitStatus,
   gitDeleteBranch,
   gitRemoveBareRepo,
   gitFetch,
@@ -51,6 +59,7 @@ export const realGitBackend: GitBackend = {
   worktreeRemove: gitWorktreeRemove,
   checkout: gitCheckout,
   currentBranch: gitCurrentBranch,
+  status: gitStatus,
   deleteBranch: gitDeleteBranch,
   removeBareRepo: gitRemoveBareRepo,
   fetch: gitFetch,

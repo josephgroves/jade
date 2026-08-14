@@ -1,6 +1,5 @@
 import { defineCommand } from "citty";
 import { resolve } from "path";
-import { $ } from "bun";
 import { intro, outro, cancel, log } from "@clack/prompts";
 import {
   findWorkspaceRoot,
@@ -11,32 +10,13 @@ import {
 import { getAppNames } from "../utils/config.ts";
 import { type FileSystemBackend, realFileSystemBackend } from "../utils/fs-backend.ts";
 import { type ConfigBackend, realConfigBackend } from "../utils/config-backend.ts";
+import { defaultRunHerdr, findWorkspaceByLabel, type HerdrRunner } from "../utils/herdr.ts";
 
-/**
- * Runs a herdr CLI invocation and returns its stdout (herdr prints a JSON
- * object per command). Injected so tests can capture commands and feed canned
- * responses without a running multiplexer. The real implementation prefers
- * HERDR_BIN_PATH (set by herdr inside a managed pane) and falls back to `herdr`
- * on PATH. Output is captured (quiet) so herdr's JSON doesn't clutter the pane.
- */
-export type HerdrRunner = (args: string[]) => Promise<string>;
-
-const defaultRunHerdr: HerdrRunner = async (args) => {
-  const bin = process.env.HERDR_BIN_PATH || "herdr";
-  const result = await $`${bin} ${args}`.quiet();
-  return result.stdout.toString();
-};
+export type { HerdrRunner };
 
 /** Find an existing herdr workspace's id by its label, from `workspace list` JSON. */
 function findWorkspaceIdByLabel(listOutput: string, label: string): string | null {
-  try {
-    const parsed = JSON.parse(listOutput);
-    const workspaces = parsed?.result?.workspaces ?? [];
-    const match = workspaces.find((w: { label?: string }) => w.label === label);
-    return match?.workspace_id ?? null;
-  } catch {
-    return null;
-  }
+  return findWorkspaceByLabel(listOutput, label)?.workspaceId ?? null;
 }
 
 /** Pull the new workspace id and its initial tab id out of `workspace create` JSON. */

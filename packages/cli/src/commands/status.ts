@@ -1,18 +1,81 @@
 import { defineCommand } from "citty";
 import { resolve } from "path";
-import {
-  findWorkspaceRoot,
-  getCurrentGroup,
-  getWorktreeGroupPath,
-  listBareRepos,
-  listWorktreeDirs,
-} from "../utils/workspace.ts";
-import { type GitBackend, realGitBackend } from "../utils/git-backend.ts";
+import { findWorkspaceRoot, getCurrentGroup, listWorktreeDirs } from "../utils/workspace.ts";
+import { resolveGroup, type ResolvedGroup } from "../utils/group.ts";
+import { getAppEnvSourcePath } from "../utils/env.ts";
+import { type GitBackend, realGitBackend, type WorktreeStatus } from "../utils/git-backend.ts";
 import { type FileSystemBackend, realFileSystemBackend } from "../utils/fs-backend.ts";
 import { type ConfigBackend, realConfigBackend } from "../utils/config-backend.ts";
+import { defaultRunHerdr, findWorkspaceByLabel, type HerdrRunner } from "../utils/herdr.ts";
 import pkg from "../../package.json" with { type: "json" };
 
-function printAllStatus(workspaceRoot: string, orgUrl: string | undefined, groups: string[]): void {
+export type StatusTarget = { view: "root" } | { view: "workspace"; name: string };
+
+/**
+ * Decide whether `jade status` reports the whole root or a single workspace.
+ *
+ * Kept pure and exported so the contextual rules are testable without chdir'ing
+ * the test process. An explicit name always wins — including over --root — so
+ * `jade status <name>` means the same thing wherever you run it.
+ */
+export function resolveStatusTarget(opts: {
+  workspaceRoot: string;
+  explicitName?: string;
+  forceRoot: boolean;
+  cwd: string;
+}): StatusTarget {
+  if (opts.explicitName) return { view: "workspace", name: opts.explicitName };
+  if (opts.forceRoot) return { view: "root" };
+
+  const current = getCurrentGroup(opts.workspaceRoot, opts.cwd);
+  if (current) return { view: "workspace", name: current };
+
+  return { view: "root" };
+}
+
+type AttentionKind =
+  | "branch-drift"
+  | "detached-head"
+  | "missing-worktree"
+  | "missing-env"
+  | "git-error";
+
+interface Attention {
+  app: string;
+  kind: AttentionKind;
+  message: string;
+  fix?: string;
+}
+
+interface AppReport {
+  name: string;
+  present: boolean;
+  path: string;
+  branch: string | null;
+  drift: boolean;
+  detached: boolean;
+  tree: (WorktreeStatus & { clean: boolean }) | null;
+  env: { present: boolean; sourceAvailable: boolean } | null;
+  error: string | null;
+}
+
+interface HerdrReport {
+  open: boolean;
+  focused: boolean;
+  workspaceId: string | null;
+}
+
+/**
+ * Raised for an unknown workspace name so the single catch below can render a
+ * helpful message instead of a bare stringified error.
+ */
+class WorkspaceNotFoundError extends Error {
+  constructor(readonly workspaceName: string, readonly available: string[]) {
+    super(`workspace '${workspaceName}' not found`);
+  }
+}
+
+function printStatus(workspaceRoot: string, orgUrl: string | undefined, groups: string[]): void {
   const lines: string[] = [
     `version: ${pkg.version}`,
     `root: ${workspaceRoot}`,
@@ -31,62 +94,239 @@ function printAllStatus(workspaceRoot: string, orgUrl: string | undefined, group
   console.log(lines.join("\n"));
 }
 
-/**
- * Full-workspace JSON contract. herdr's quick-switch pane needs exactly this
- * shape (every group, no per-app git calls) — it requests it explicitly via
- * `jade status --json --all`, so this must stay stable regardless of what the
- * default (unscoped) --json shape looks like.
- */
-function printAllStatusJson(workspaceRoot: string, orgUrl: string | undefined, groups: string[]): void {
-  console.log(JSON.stringify({ version: pkg.version, root: workspaceRoot, orgUrl, groups }));
+function printStatusJson(workspaceRoot: string, orgUrl: string | undefined, groups: string[]): void {
+  console.log(
+    JSON.stringify({ view: "root", version: pkg.version, root: workspaceRoot, orgUrl, groups })
+  );
 }
 
-function printGroupStatus(
-  group: string,
-  orgUrl: string | undefined,
-  apps: { name: string; branch: string }[]
-): void {
-  const lines: string[] = [
-    `version: ${pkg.version}`,
-    `workspace: ${group}`,
-  ];
-  if (orgUrl) {
-    lines.push(`org: ${orgUrl}`);
-  }
-  lines.push("apps:");
-  if (apps.length === 0) {
+/**
+ * The workspace name plus the apps actually checked out here, one per line with
+ * their branch. Deliberately terse — everything else (working-tree state, env
+ * gaps, missing apps, herdr, the actionable `attention` list) stays available
+ * via --json rather than crowding the interactive view.
+ */
+function printWorkspaceStatus(group: ResolvedGroup, apps: AppReport[]): void {
+  const lines: string[] = [`workspace: ${group.name}`];
+  const installed = apps.filter((app) => app.present);
+
+  if (installed.length === 0) {
     lines.push("  (none)");
   } else {
-    for (const app of apps) {
-      lines.push(`  - ${app.name} (${app.branch})`);
+    const rows = installed.map((app) => ({
+      name: app.name,
+      branch: app.error ? "(error)" : (app.branch ?? "?"),
+      // Only branch-level facts earn a marker here; the branch is the one thing
+      // this view reports, so drift and detachment are what can contradict it.
+      marker: app.detached ? "[detached]" : app.drift ? "[drift]" : "",
+    }));
+
+    const nameWidth = Math.max(...rows.map((r) => r.name.length));
+    const branchWidth = Math.max(...rows.map((r) => r.branch.length));
+
+    for (const row of rows) {
+      const cells = `  ${row.name.padEnd(nameWidth)}  ${
+        row.marker ? row.branch.padEnd(branchWidth) : row.branch
+      }`;
+      lines.push(row.marker ? `${cells}  ${row.marker}` : cells);
     }
   }
+
   console.log(lines.join("\n"));
 }
 
-function printGroupStatusJson(
+function printWorkspaceStatusJson(
   workspaceRoot: string,
-  group: string,
   orgUrl: string | undefined,
-  apps: { name: string; branch: string }[]
+  group: ResolvedGroup,
+  apps: AppReport[],
+  herdr: HerdrReport | null,
+  attention: Attention[]
 ): void {
-  console.log(JSON.stringify({ version: pkg.version, root: workspaceRoot, workspace: group, orgUrl, apps }));
+  console.log(
+    JSON.stringify({
+      view: "workspace",
+      version: pkg.version,
+      root: workspaceRoot,
+      orgUrl,
+      workspace: group.name,
+      path: group.path,
+      isMain: group.isMain,
+      ...(herdr ? { herdr } : {}),
+      apps,
+      attention,
+    })
+  );
+}
+
+/**
+ * Gather per-app state for one workspace. Runs the apps concurrently: this is
+ * the only view that makes git calls, so per-app latency is what the user feels.
+ *
+ * `detailed` gates the work the terse text view never renders — a status call
+ * and two stats per app — so the interactive path costs one git call per app.
+ */
+async function collectApps(
+  workspaceRoot: string,
+  group: ResolvedGroup,
+  git: GitBackend,
+  fs: FileSystemBackend,
+  detailed: boolean
+): Promise<AppReport[]> {
+  return await Promise.all(
+    group.apps.map(async (app): Promise<AppReport> => {
+      if (!app.present) {
+        return {
+          name: app.name,
+          present: false,
+          path: app.path,
+          branch: null,
+          drift: false,
+          detached: false,
+          tree: null,
+          env: null,
+          error: null,
+        };
+      }
+
+      const env = detailed
+        ? {
+            present: await fs.pathExists(resolve(app.path, ".env")),
+            sourceAvailable: await fs.pathExists(getAppEnvSourcePath(workspaceRoot, app.name)),
+          }
+        : null;
+
+      try {
+        const [branch, tree] = await Promise.all([
+          git.currentBranch(app.path),
+          detailed ? git.status(app.path) : null,
+        ]);
+
+        // `rev-parse --abbrev-ref HEAD` reports the literal "HEAD" when detached;
+        // that isn't branch drift, it's a different problem worth naming.
+        const detached = branch === "HEAD";
+
+        return {
+          name: app.name,
+          present: true,
+          path: app.path,
+          branch,
+          drift: !detached && branch !== group.name,
+          detached,
+          tree: tree
+            ? { ...tree, clean: tree.staged === 0 && tree.unstaged === 0 && tree.untracked === 0 }
+            : null,
+          env,
+          error: null,
+        };
+      } catch (error) {
+        // One broken worktree must not sink the whole report.
+        return {
+          name: app.name,
+          present: true,
+          path: app.path,
+          branch: null,
+          drift: false,
+          detached: false,
+          tree: null,
+          env,
+          error: String(error),
+        };
+      }
+    })
+  );
+}
+
+function buildAttention(group: ResolvedGroup, apps: AppReport[]): Attention[] {
+  const attention: Attention[] = [];
+
+  for (const app of apps) {
+    if (!app.present) {
+      attention.push({
+        app: app.name,
+        kind: "missing-worktree",
+        message: "no worktree in this workspace",
+        fix: `jade workspace add ${group.name}`,
+      });
+      continue;
+    }
+
+    if (app.error) {
+      attention.push({
+        app: app.name,
+        kind: "git-error",
+        message: `could not read git state: ${app.error}`,
+      });
+      continue;
+    }
+
+    if (app.detached) {
+      attention.push({
+        app: app.name,
+        kind: "detached-head",
+        message: "detached HEAD, not on a branch",
+        // `jade checkout --app` resolves the app relative to cwd.
+        fix: `cd ${group.path} && jade checkout ${group.name} --app ${app.name}`,
+      });
+    } else if (app.drift) {
+      attention.push({
+        app: app.name,
+        kind: "branch-drift",
+        message:
+          `on '${app.branch}', not '${group.name}' ` +
+          `(the branch was likely already checked out in another workspace)`,
+        fix: `cd ${group.path} && jade checkout ${group.name} --app ${app.name}`,
+      });
+    }
+
+    if (app.env && !app.env.present && app.env.sourceAvailable) {
+      attention.push({
+        app: app.name,
+        kind: "missing-env",
+        message: ".env missing, source available",
+        fix: "jade env sync",
+      });
+    }
+  }
+
+  return attention;
+}
+
+/**
+ * Query herdr for whether this group is open in the current session. Best
+ * effort by design: status must never fail because herdr is unreachable.
+ */
+async function collectHerdr(
+  groupName: string,
+  runHerdr: HerdrRunner
+): Promise<HerdrReport | null> {
+  if (process.env.HERDR_ENV !== "1") return null;
+
+  try {
+    const found = findWorkspaceByLabel(await runHerdr(["workspace", "list"]), groupName);
+    if (!found) return { open: false, focused: false, workspaceId: null };
+    return { open: true, focused: found.focused, workspaceId: found.workspaceId };
+  } catch {
+    return null;
+  }
 }
 
 export function makeStatusCommand(
   git: GitBackend = realGitBackend,
+  runHerdr: HerdrRunner = defaultRunHerdr,
   fs: FileSystemBackend = realFileSystemBackend,
   config: ConfigBackend = realConfigBackend
 ) {
   return defineCommand({
     meta: {
       name: "status",
-      description: "Print status for the current workspace group (use --all for every group)",
+      description:
+        "Show workspace status. Inside a workspace, reports that workspace's apps, branches and gaps; at the workspace root, lists jade version, root, org URL and workspaces",
     },
     args: {
-      group: {
+      name: {
         type: "positional",
-        description: "Worktree group to show (defaults to current group, or 'main')",
+        description: "Workspace to report on (defaults to the current workspace, if any)",
         required: false,
       },
       workspace: {
@@ -94,10 +334,9 @@ export function makeStatusCommand(
         alias: "w",
         description: "Workspace root path",
       },
-      all: {
+      root: {
         type: "boolean",
-        alias: "a",
-        description: "Show every workspace group instead of just one (also affects --json)",
+        description: "Force the root summary even when run from inside a workspace",
         default: false,
       },
       json: {
@@ -118,49 +357,59 @@ export function makeStatusCommand(
 
       try {
         const jadeConfig = await config.readConfig(workspaceRoot);
-        const groups = await listWorktreeDirs(workspaceRoot, fs);
+        const target = resolveStatusTarget({
+          workspaceRoot,
+          explicitName: args.name as string | undefined,
+          forceRoot: args.root as boolean,
+          cwd: process.cwd(),
+        });
 
-        if (args.all) {
+        if (target.view === "root") {
+          const groups = await listWorktreeDirs(workspaceRoot, fs);
           if (args.json) {
-            printAllStatusJson(workspaceRoot, jadeConfig.orgUrl, groups);
+            printStatusJson(workspaceRoot, jadeConfig.orgUrl, groups);
           } else {
-            printAllStatus(workspaceRoot, jadeConfig.orgUrl, groups);
+            printStatus(workspaceRoot, jadeConfig.orgUrl, groups);
           }
           return;
         }
 
-        const group =
-          (args.group as string | undefined) ||
-          getCurrentGroup(workspaceRoot, process.cwd()) ||
-          "main";
+        const group = await resolveGroup(workspaceRoot, target.name, fs);
 
-        if (!groups.includes(group)) {
-          console.error(`jade status: worktree group '${group}' not found. See 'jade workspace list'.`);
-          process.exit(1);
+        if (!group.exists) {
+          throw new WorkspaceNotFoundError(target.name, await listWorktreeDirs(workspaceRoot, fs));
         }
 
-        const groupPath = getWorktreeGroupPath(workspaceRoot, group);
-        const bareRepos = await listBareRepos(workspaceRoot, fs);
-        const apps: { name: string; branch: string }[] = [];
+        const asJson = args.json as boolean;
+        const apps = await collectApps(workspaceRoot, group, git, fs, asJson);
 
-        for (const appName of bareRepos) {
-          const appPath = resolve(groupPath, appName);
-          if (await fs.pathExists(appPath)) {
-            try {
-              apps.push({ name: appName, branch: await git.currentBranch(appPath) });
-            } catch {
-              apps.push({ name: appName, branch: "?" });
-            }
-          }
+        if (!asJson) {
+          printWorkspaceStatus(group, apps);
+          return;
         }
 
-        if (args.json) {
-          printGroupStatusJson(workspaceRoot, group, jadeConfig.orgUrl, apps);
-        } else {
-          printGroupStatus(group, jadeConfig.orgUrl, apps);
-        }
+        // Only the JSON view carries the full picture, so only it pays for the
+        // extra gathering — including the herdr subprocess.
+        const herdr = await collectHerdr(group.name, runHerdr);
+        printWorkspaceStatusJson(
+          workspaceRoot,
+          jadeConfig.orgUrl,
+          group,
+          apps,
+          herdr,
+          buildAttention(group, apps)
+        );
       } catch (error) {
-        console.error(`jade status: ${error}`);
+        if (error instanceof WorkspaceNotFoundError) {
+          console.error(
+            `jade status: workspace '${error.workspaceName}' not found.\n` +
+              (error.available.length > 0
+                ? `  Available: ${error.available.join(", ")}`
+                : `  No workspaces yet. Create one with 'jade workspace add <name>'.`)
+          );
+        } else {
+          console.error(`jade status: ${error}`);
+        }
         process.exit(1);
       }
     },
