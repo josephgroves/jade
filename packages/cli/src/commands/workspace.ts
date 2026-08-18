@@ -35,6 +35,27 @@ async function resolveSelectedApps(
   return result;
 }
 
+export type ResolvedAppsList = {
+  /** Requested apps that exist among bareRepos and aren't already in the workspace */
+  selected: string[];
+  /** Requested names that don't match any configured app */
+  invalid: string[];
+  /** Requested apps that are valid but already present in the workspace */
+  alreadyPresent: string[];
+};
+
+/** Parses a comma-separated `--apps` value against the known/candidate app lists. Pure and unit-testable. */
+export function resolveAppsList(rawApps: string, bareRepos: string[], candidateApps: string[]): ResolvedAppsList {
+  const requested = Array.from(new Set(rawApps.split(",").map((a) => a.trim()).filter(Boolean)));
+  const invalid = requested.filter((a) => !bareRepos.includes(a));
+  const valid = requested.filter((a) => bareRepos.includes(a));
+  return {
+    selected: valid.filter((a) => candidateApps.includes(a)),
+    invalid,
+    alreadyPresent: valid.filter((a) => !candidateApps.includes(a)),
+  };
+}
+
 export function makeWorkspaceAddCommand(
   git: GitBackend = realGitBackend,
   selectApps: SelectAppsFn = defaultSelectApps,
@@ -56,6 +77,10 @@ export function makeWorkspaceAddCommand(
         alias: "a",
         description: "Add all apps to the workspace without prompting",
         default: false,
+      },
+      apps: {
+        type: "string",
+        description: "Comma-separated app names to add (bypasses --all and the interactive prompt)",
       },
       workspace: {
         type: "string",
@@ -105,7 +130,25 @@ export function makeWorkspaceAddCommand(
           process.exit(1);
         }
 
-        const selectedApps = await resolveSelectedApps(candidateApps, all, selectApps);
+        const appsArg = args.apps as string | undefined;
+        let selectedApps: string[] | null;
+
+        if (appsArg !== undefined) {
+          const { selected, invalid, alreadyPresent } = resolveAppsList(appsArg, bareRepos, candidateApps);
+
+          if (invalid.length > 0) {
+            if (!existing) await fs.remove(worktreeDirPath);
+            cancel(`Unknown app(s): ${invalid.join(", ")}. Available: ${bareRepos.join(", ")}`);
+            process.exit(1);
+          }
+          if (alreadyPresent.length > 0) {
+            log.warn(`Already in workspace '${name}', skipping: ${alreadyPresent.join(", ")}`);
+          }
+
+          selectedApps = selected.length > 0 ? selected : null;
+        } else {
+          selectedApps = await resolveSelectedApps(candidateApps, all, selectApps);
+        }
 
         if (!selectedApps) {
           if (!existing) await fs.remove(worktreeDirPath);

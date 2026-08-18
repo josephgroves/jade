@@ -8,4 +8,11 @@ describe("bundledSkillPackages", () => {
     expect(md).toBeDefined();
     expect(md).toContain("name: jade-workspace");
   });
+
+  test("includes jade-review with embedded SKILL.md", () => {
+    expect(listBundledSkillNames()).toContain("jade-review");
+    const md = bundledSkillPackages["jade-review"]?.files["SKILL.md"];
+    expect(md).toBeDefined();
+    expect(md).toContain("name: jade-review");
+  });
 });

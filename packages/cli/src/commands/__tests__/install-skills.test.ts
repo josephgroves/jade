@@ -2,7 +2,12 @@ import { describe, test, expect, afterEach } from "bun:test";
 import { join } from "path";
 import { readFile, mkdir, mkdtemp, rm, stat } from "fs/promises";
 import { bundledSkillPackages } from "../../bundled-skills/registry.ts";
-import { installBundledSkillPackages } from "../../utils/install-skills.ts";
+import {
+  installBundledSkillPackages,
+  resolveSkillsInstallTargets,
+  detectSkillsInstallTargets,
+} from "../../utils/install-skills.ts";
+import { createMockFileSystemBackend } from "../../test/mock-filesystem-backend.ts";
 
 /**
  * Workspace-local temp so tests can create `.cursor/` (sandbox often blocks that under /tmp).
@@ -35,6 +40,11 @@ describe("installBundledSkillPackages", () => {
     const skillPath = join(projectPath, "_jade_skill_install", "skills", "jade-workspace", "SKILL.md");
     const body = await readFile(skillPath, "utf8");
     expect(body).toContain("name: jade-workspace");
+
+    expect(names).toContain("jade-review");
+    const reviewSkillPath = join(projectPath, "_jade_skill_install", "skills", "jade-review", "SKILL.md");
+    const reviewBody = await readFile(reviewSkillPath, "utf8");
+    expect(reviewBody).toContain("name: jade-review");
   });
 
   test("creates dest only when packages empty", async () => {
@@ -46,5 +56,39 @@ describe("installBundledSkillPackages", () => {
     });
     expect(names).toEqual([]);
     expect((await stat(join(projectPath, "_jade_skill_install", "skills"))).isDirectory()).toBe(true);
+  });
+});
+
+describe("resolveSkillsInstallTargets / detectSkillsInstallTargets", () => {
+  test("explicit target wins regardless of what's on disk", async () => {
+    const { fs } = createMockFileSystemBackend();
+    expect(await resolveSkillsInstallTargets("cursor", "/proj", fs)).toEqual(["cursor"]);
+    expect(await resolveSkillsInstallTargets("claude", "/proj", fs)).toEqual(["claude"]);
+    expect(await resolveSkillsInstallTargets("all", "/proj", fs)).toEqual(["cursor", "claude"]);
+  });
+
+  test("auto-detects cursor only when just .cursor/ exists", async () => {
+    const { fs } = createMockFileSystemBackend();
+    await fs.mkdirp("/proj/.cursor");
+    expect(await detectSkillsInstallTargets("/proj", fs)).toEqual(["cursor"]);
+    expect(await resolveSkillsInstallTargets(undefined, "/proj", fs)).toEqual(["cursor"]);
+  });
+
+  test("auto-detects claude only when just .claude/ exists", async () => {
+    const { fs } = createMockFileSystemBackend();
+    await fs.mkdirp("/proj/.claude");
+    expect(await detectSkillsInstallTargets("/proj", fs)).toEqual(["claude"]);
+  });
+
+  test("falls back to both when neither config dir exists", async () => {
+    const { fs } = createMockFileSystemBackend();
+    expect(await detectSkillsInstallTargets("/proj", fs)).toEqual(["cursor", "claude"]);
+  });
+
+  test("installs into both when neither dir exists but both are present", async () => {
+    const { fs } = createMockFileSystemBackend();
+    await fs.mkdirp("/proj/.cursor");
+    await fs.mkdirp("/proj/.claude");
+    expect(await detectSkillsInstallTargets("/proj", fs)).toEqual(["cursor", "claude"]);
   });
 });

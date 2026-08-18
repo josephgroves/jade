@@ -35,15 +35,15 @@ To verify that compiled binaries embed Cursor skills text, run **`bun run --cwd 
 | `jade init <path>` | Create a new workspace with a `.bare/` and `main/` directory |
 | `jade add <repo>` | Clone a repo (bare) and add it to all existing workspaces |
 | `jade remove <app>` | Remove an app and its data from all workspaces |
-| `jade workspace add <name>` | Create a workspace — a directory with every app on a shared branch |
+| `jade workspace add <name>` | Create a workspace — every app (`-a`) or a picked subset (prompt, or `--apps app1,app2`) on a shared branch |
 | `jade workspace list` | List all workspaces and their apps/branches |
 | `jade workspace remove <name>` | Remove a workspace (optionally delete branches with `-d`) |
 | `jade checkout <branch>` | Checkout or create (`-c`) a branch in a specific app |
 | `jade status [name]` | Report a workspace's apps and branches, or the root summary when run outside one (`--root` to force, `--json` for the full report) |
 | `jade open [group]` | Open a worktree group in the [herdr](https://herdr.dev) multiplexer: a root tab plus one tab per app |
-| `jade skills install` | Copy bundled Cursor agent skills into `<project>/.cursor/skills/` |
+| `jade skills install` | Copy bundled agent skills into `.cursor/skills/` and/or `.claude/skills/` (`--target`, `--scope`) |
 
-Use **`jade skills install`** from any project root (or **`--project <dir>`**) to add the Jade workspace skill for Cursor agents. Skill text is **imported at build time** (`skills/*/SKILL.md` with `type: "text"`), so a **`bun build --compile`** binary embeds them and does not need a separate `skills/` folder next to the executable.
+Use **`jade skills install`** from any project root (or **`--project <dir>`**) to add the Jade workspace skill for Cursor and/or Claude Code agents. It auto-detects which tool config(s) already exist and installs into those; pass **`--target cursor|claude|all`** to force a specific one, or **`--scope user`** to install into your home directory (`~/.claude/skills`, `~/.cursor/skills`) instead of a project. Skill text is **imported at build time** (`skills/*/SKILL.md` with `type: "text"`), so a **`bun build --compile`** binary embeds them and does not need a separate `skills/` folder next to the executable.
 
 ## How it works
 

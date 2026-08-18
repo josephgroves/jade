@@ -5,6 +5,7 @@ import {
   makeWorkspaceListCommand,
   makeWorkspaceRemoveCommand,
   makeWorkspaceUpdateCommand,
+  resolveAppsList,
   type SelectAppsFn,
 } from "../workspace.ts";
 import { makeAddCommand } from "../add.ts";
@@ -202,6 +203,102 @@ describe("workspace add command", () => {
 
     // workspace directory should have been cleaned up
     expect(await fs.pathExists(join(workspacePath, "workspace", "feat-cancel"))).toBe(false);
+  });
+
+  test("--apps adds exactly the named apps without prompting", async () => {
+    tempDir = await createTempDir();
+    const workspacePath = join(tempDir.path, "ws");
+    const { fs } = createMockFileSystemBackend();
+    const { config } = createMockConfigBackend();
+    const initCmd = makeInitCommand(fs, config);
+    await initCmd.run!({ args: { path: workspacePath } } as any);
+
+    const { git } = createMockGitBackend();
+    const addCmd = makeAddCommand(git, fs, config);
+    // selectNone would exit if called — proves --apps never invokes the prompt
+    const workspaceAddCmd = makeWorkspaceAddCommand(git, selectNone, fs);
+
+    await addCmd.run!({
+      args: { repoNameOrUrl: "https://github.com/org/alpha", name: "alpha", workspace: workspacePath },
+    } as any);
+    await addCmd.run!({
+      args: { repoNameOrUrl: "https://github.com/org/beta", name: "beta", workspace: workspacePath },
+    } as any);
+
+    await workspaceAddCmd.run!({
+      args: { name: "feat-apps", workspace: workspacePath, apps: "alpha" },
+    } as any);
+
+    expect(await fs.pathExists(join(workspacePath, "workspace", "feat-apps", "alpha"))).toBe(true);
+    expect(await fs.pathExists(join(workspacePath, "workspace", "feat-apps", "beta"))).toBe(false);
+  });
+
+  test("--apps rejects an unknown app name and cleans up a newly created group", async () => {
+    tempDir = await createTempDir();
+    const workspacePath = join(tempDir.path, "ws");
+    const { fs } = createMockFileSystemBackend();
+    const { config } = createMockConfigBackend();
+    const initCmd = makeInitCommand(fs, config);
+    await initCmd.run!({ args: { path: workspacePath } } as any);
+
+    const { git } = createMockGitBackend();
+    const addCmd = makeAddCommand(git, fs, config);
+    const workspaceAddCmd = makeWorkspaceAddCommand(git, selectNone, fs);
+
+    await addCmd.run!({
+      args: { repoNameOrUrl: "https://github.com/org/alpha", name: "alpha", workspace: workspacePath },
+    } as any);
+
+    await expectsExit(() =>
+      workspaceAddCmd.run!({
+        args: { name: "feat-bad-app", workspace: workspacePath, apps: "does-not-exist" },
+      } as any)
+    );
+
+    expect(await fs.pathExists(join(workspacePath, "workspace", "feat-bad-app"))).toBe(false);
+  });
+
+  test("--apps exits cleanly when every named app is already in the workspace", async () => {
+    tempDir = await createTempDir();
+    const workspacePath = join(tempDir.path, "ws");
+    const { fs } = createMockFileSystemBackend();
+    const { config } = createMockConfigBackend();
+    const initCmd = makeInitCommand(fs, config);
+    await initCmd.run!({ args: { path: workspacePath } } as any);
+
+    const { git } = createMockGitBackend();
+    const addCmd = makeAddCommand(git, fs, config);
+    const workspaceAddCmd = makeWorkspaceAddCommand(git, selectAll, fs);
+
+    await addCmd.run!({
+      args: { repoNameOrUrl: "https://github.com/org/alpha", name: "alpha", workspace: workspacePath },
+    } as any);
+    await addCmd.run!({
+      args: { repoNameOrUrl: "https://github.com/org/beta", name: "beta", workspace: workspacePath },
+    } as any);
+
+    await workspaceAddCmd.run!({
+      args: { name: "feat-again", workspace: workspacePath, apps: "alpha" },
+    } as any);
+
+    // beta still isn't present, but re-requesting alpha alone should exit rather than no-op silently
+    await expectsExit(() =>
+      workspaceAddCmd.run!({
+        args: { name: "feat-again", workspace: workspacePath, apps: "alpha" },
+      } as any)
+    );
+  });
+});
+
+describe("resolveAppsList", () => {
+  test("splits, trims, and dedupes the requested app names", () => {
+    const result = resolveAppsList(" alpha, beta ,alpha", ["alpha", "beta", "gamma"], ["alpha", "beta", "gamma"]);
+    expect(result).toEqual({ selected: ["alpha", "beta"], invalid: [], alreadyPresent: [] });
+  });
+
+  test("separates unknown names from apps already present in the workspace", () => {
+    const result = resolveAppsList("alpha,ghost,beta", ["alpha", "beta"], ["beta"]);
+    expect(result).toEqual({ selected: ["beta"], invalid: ["ghost"], alreadyPresent: ["alpha"] });
   });
 });
 
