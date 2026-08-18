@@ -14,7 +14,7 @@ import env from "./src/commands/env.ts";
 const main = defineCommand({
   meta: {
     name: "jade",
-    version: "0.1.2",
+    version: "0.2.0",
     description: "Workspace manager for multi-app development",
   },
   subCommands: {
