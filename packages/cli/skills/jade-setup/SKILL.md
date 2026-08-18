@@ -122,8 +122,10 @@ it and you want them to understand the jade layout, run from that app's repo
 root:
 
 ```bash
-jade skills install               # copies skills/jade-workspace into .cursor/skills/
-jade skills install --project <dir>   # or target a specific directory
+jade skills install                     # auto-detects: installs into .cursor/skills/ and/or .claude/skills/
+jade skills install --project <dir>     # or target a specific directory
+jade skills install --target claude     # force a specific tool (cursor | claude | all)
+jade skills install --scope user        # install to ~/.claude/skills (and/or ~/.cursor/skills) instead of a project
 ```
 
 ## Common setup pitfalls

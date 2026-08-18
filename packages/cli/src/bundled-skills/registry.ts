@@ -1,4 +1,5 @@
 import jadeWorkspaceSkill from "../../skills/jade-workspace/SKILL.md" with { type: "text" };
+import jadeReviewSkill from "../../skills/jade-review/SKILL.md" with { type: "text" };
 
 export type BundledSkillPackage = {
   /** Relative paths inside the skill folder (e.g. SKILL.md) */
@@ -13,6 +14,11 @@ export const bundledSkillPackages: Record<string, BundledSkillPackage> = {
   "jade-workspace": {
     files: {
       "SKILL.md": jadeWorkspaceSkill,
+    },
+  },
+  "jade-review": {
+    files: {
+      "SKILL.md": jadeReviewSkill,
     },
   },
 };
