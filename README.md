@@ -2,21 +2,31 @@
 
 A CLI for managing multi-repo workspaces using git bare repos. Work on multiple branches across multiple repositories simultaneously without cloning anything twice.
 
+This repo is a Bun workspace with two packages:
+
+| Package | Description |
+|---------|-------------|
+| [`packages/cli`](packages/cli) | The `jade` CLI itself |
+| [`packages/herdr`](packages/herdr) | The [herdr](https://herdr.dev) plugin that surfaces jade operations as herdr UI |
+
 ## Install
 
 Requires [Bun](https://bun.sh) (v1.0+) and Git (v2.5+).
 
 ```bash
-# Link globally for development
-bun link
+# Install workspace dependencies
+bun install
 
-# Or compile and install a standalone binary
+# Link the CLI globally for development
+cd packages/cli && bun link
+
+# Or compile and install a standalone binary (from the repo root)
 bun run install-global  # places binary at ~/.local/bin/jade
 ```
 
 Verify with `jade --help`.
 
-To verify that compiled binaries embed Cursor skills text, run **`bun run test:embed`** (optional; skipped in default `bun test` because some environments block `.cursor` creation in spawned processes).
+To verify that compiled binaries embed Cursor skills text, run **`bun run --cwd packages/cli test:embed`** (optional; skipped in default `bun test` because some environments block `.cursor` creation in spawned processes).
 
 ## Features
 
@@ -25,15 +35,15 @@ To verify that compiled binaries embed Cursor skills text, run **`bun run test:e
 | `jade init <path>` | Create a new workspace with a `.bare/` and `main/` directory |
 | `jade add <repo>` | Clone a repo (bare) and add it to all existing workspaces |
 | `jade remove <app>` | Remove an app and its data from all workspaces |
-| `jade workspace add <name>` | Create a workspace — a directory with every app on a shared branch |
+| `jade workspace add <name>` | Create a workspace — every app (`-a`) or a picked subset (prompt, or `--apps app1,app2`) on a shared branch |
 | `jade workspace list` | List all workspaces and their apps/branches |
 | `jade workspace remove <name>` | Remove a workspace (optionally delete branches with `-d`) |
 | `jade checkout <branch>` | Checkout or create (`-c`) a branch in a specific app |
 | `jade status [name]` | Report a workspace's apps and branches, or the root summary when run outside one (`--root` to force, `--json` for the full report) |
 | `jade open [group]` | Open a worktree group as a herdr workspace or tmux session: a root tab/window plus one per app |
-| `jade skills install` | Copy bundled Cursor agent skills into `<project>/.cursor/skills/` |
+| `jade skills install` | Copy bundled agent skills into `.cursor/skills/` and/or `.claude/skills/` (`--target`, `--scope`) |
 
-Use **`jade skills install`** from any project root (or **`--project <dir>`**) to add the Jade workspace skill for Cursor agents. Skill text is **imported at build time** (`skills/*/SKILL.md` with `type: "text"`), so a **`bun build --compile`** binary embeds them and does not need a separate `skills/` folder next to the executable.
+Use **`jade skills install`** from any project root (or **`--project <dir>`**) to add the Jade workspace skill for Cursor and/or Claude Code agents. It auto-detects which tool config(s) already exist and installs into those; pass **`--target cursor|claude|all`** to force a specific one, or **`--scope user`** to install into your home directory (`~/.claude/skills`, `~/.cursor/skills`) instead of a project. Skill text is **imported at build time** (`skills/*/SKILL.md` with `type: "text"`), so a **`bun build --compile`** binary embeds them and does not need a separate `skills/` folder next to the executable.
 
 ## How it works
 
@@ -167,7 +177,7 @@ jade open feat-auth --tmux
 
 ### Herdr plugin
 
-The `herdr/` directory is a real [herdr plugin](https://herdr.dev/docs/plugins/) that
+The [`packages/herdr`](packages/herdr) directory is a real [herdr plugin](https://herdr.dev/docs/plugins/) that
 closes the loop the other direction — surfacing jade operations as herdr UI instead of
 requiring you to type `jade` commands by hand:
 
@@ -200,8 +210,8 @@ to apply it.
 Install the plugin with:
 
 ```bash
-herdr plugin install <org>/jade/herdr   # once published on GitHub
-herdr plugin link /path/to/jade/herdr   # for local development
+herdr plugin install <org>/jade/packages/herdr   # once published on GitHub
+herdr plugin link /path/to/jade/packages/herdr   # for local development
 ```
 
 Every plugin script is a thin wrapper that shells out to the `jade` binary on `PATH`
