@@ -11,8 +11,15 @@ import { getAppNames } from "../utils/config.ts";
 import { type FileSystemBackend, realFileSystemBackend } from "../utils/fs-backend.ts";
 import { type ConfigBackend, realConfigBackend } from "../utils/config-backend.ts";
 import { defaultRunHerdr, findWorkspaceByLabel, type HerdrRunner } from "../utils/herdr.ts";
+import {
+  defaultRunTmux,
+  defaultAttachTmux,
+  tmuxSessionExists,
+  type TmuxRunner,
+  type TmuxAttacher,
+} from "../utils/tmux.ts";
 
-export type { HerdrRunner };
+export type { HerdrRunner, TmuxRunner, TmuxAttacher };
 
 /** Find an existing herdr workspace's id by its label, from `workspace list` JSON. */
 function findWorkspaceIdByLabel(listOutput: string, label: string): string | null {
@@ -33,16 +40,104 @@ function parseCreatedWorkspace(createOutput: string): { workspaceId: string | nu
   }
 }
 
+/**
+ * tmux backend for `jade open`. Mirrors the herdr flow (focus an existing
+ * session, else create one) but addresses everything by name — tmux has no
+ * opaque ids to parse out of JSON like herdr does. Has no precondition of its
+ * own (unlike herdr's `HERDR_ENV` requirement) — it works from anywhere,
+ * handing off to the session differently depending on where "anywhere" is:
+ *
+ * - Already attached to a tmux client (`$TMUX` set): a quick, non-blocking
+ *   `switch-client` — you're already looking at a tmux client, just point it
+ *   at the new session.
+ * - Inside a herdr pane (`--tmux` forced the tmux backend despite
+ *   `HERDR_ENV=1`): create/find the session and stop there. There's no plain
+ *   terminal to hand off to, and attaching would nest a tmux client inside
+ *   the herdr pane, so it's left running in the background instead.
+ * - Otherwise (a plain terminal, no multiplexer at all): hand the terminal
+ *   over to an interactive `attach-session` via `attachTmux`.
+ *
+ * Returns the tmux client's exit code when it does that interactive attach,
+ * or `undefined` for the other two (non-blocking) cases. Callers must
+ * `process.exit()` with a defined result themselves, and only *outside* any
+ * try/catch around this call — a caught rethrow followed by `process.exit(1)`
+ * would otherwise stomp a real (e.g. 0) exit code from a successful attach.
+ */
+async function openWithTmux(
+  runTmux: TmuxRunner,
+  attachTmux: TmuxAttacher,
+  group: string,
+  groupPath: string,
+  apps: string[]
+): Promise<number | undefined> {
+  const attachedToTmux = Boolean(process.env.TMUX);
+  const inHerdr = process.env.HERDR_ENV === "1";
+
+  const existed = await tmuxSessionExists(runTmux, group);
+
+  if (!existed) {
+    const created = await runTmux(["new-session", "-d", "-s", group, "-n", group, "-c", groupPath]);
+    if (created.exitCode !== 0) {
+      cancel(`Failed to create tmux session '${group}': ${created.stderr || created.stdout}`);
+      process.exit(1);
+    }
+
+    for (const app of apps) {
+      // Trailing colon forces a session-only target — the root window shares
+      // its name with the session, so a bare `-t group` is ambiguous and tmux
+      // resolves it to that window instead of "append to this session".
+      await runTmux(["new-window", "-t", `${group}:`, "-n", app, "-c", resolve(groupPath, app)]);
+    }
+
+    // Creating windows leaves the last one selected; bring focus back to root.
+    await runTmux(["select-window", "-t", `${group}:${group}`]);
+
+    if (apps.length > 0) {
+      log.success(`Opened tmux session '${group}' with windows: ${group} (root), ${apps.join(", ")}`);
+    } else {
+      log.warn(`No apps found in '${group}'. Opened the '${group}' tmux session with a root window only.`);
+    }
+  }
+
+  if (attachedToTmux) {
+    await runTmux(["switch-client", "-t", group]);
+    outro(
+      existed
+        ? `Focused existing '${group}' tmux session. Run claude in its root window for cross-app context.`
+        : `Ready — run claude in the '${group}' root window for cross-app context.`
+    );
+    return undefined;
+  }
+
+  if (inHerdr) {
+    outro(
+      existed
+        ? `tmux session '${group}' is already running in the background. Attach from a terminal with 'tmux attach -t ${group}'.`
+        : `tmux session '${group}' created in the background. Attach from a terminal with 'tmux attach -t ${group}'.`
+    );
+    return undefined;
+  }
+
+  outro(
+    existed
+      ? `Attaching to existing '${group}' tmux session. Run claude in its root window for cross-app context.`
+      : `Ready — run claude in the '${group}' root window for cross-app context.`
+  );
+  return await attachTmux(group);
+}
+
 export function makeOpenCommand(
   runHerdr: HerdrRunner = defaultRunHerdr,
   fs: FileSystemBackend = realFileSystemBackend,
-  config: ConfigBackend = realConfigBackend
+  config: ConfigBackend = realConfigBackend,
+  runTmux: TmuxRunner = defaultRunTmux,
+  attachTmux: TmuxAttacher = defaultAttachTmux
 ) {
   return defineCommand({
     meta: {
       name: "open",
       description:
-        "Open a worktree group as a dedicated herdr workspace (labeled with the group name), with a root tab plus one tab per app",
+        "Open a worktree group as a dedicated herdr workspace or tmux session (labeled with the group name), with a root tab/window plus one per app",
     },
     args: {
       group: {
@@ -55,6 +150,11 @@ export function makeOpenCommand(
         alias: "w",
         description: "Workspace root path",
       },
+      tmux: {
+        type: "boolean",
+        description: "Force the tmux backend, even inside a herdr pane (HERDR_ENV=1)",
+        default: false,
+      },
     },
     async run({ args }) {
       const workspaceRoot = args.workspace
@@ -66,13 +166,10 @@ export function makeOpenCommand(
         process.exit(1);
       }
 
-      if (process.env.HERDR_ENV !== "1") {
-        cancel(
-          `jade open must be run inside a herdr session (HERDR_ENV is not set).\n` +
-            `  Start a herdr pane and run jade open from there.`
-        );
-        process.exit(1);
-      }
+      // herdr wins when both are active, unless --tmux forces the tmux
+      // backend; otherwise tmux is the universal fallback — it needs no
+      // pre-existing session (see openWithTmux).
+      const useHerdr = process.env.HERDR_ENV === "1" && !args.tmux;
 
       const group =
         (args.group as string | undefined) ||
@@ -100,7 +197,21 @@ export function makeOpenCommand(
         ...[...present].filter((app) => !configOrder.includes(app)).sort(),
       ];
 
-      intro(`Opening '${group}' in herdr`);
+      intro(`Opening '${group}' in ${useHerdr ? "herdr" : "tmux"}`);
+
+      if (!useHerdr) {
+        let tmuxExitCode: number | undefined;
+        try {
+          tmuxExitCode = await openWithTmux(runTmux, attachTmux, group, groupPath, apps);
+        } catch (error) {
+          cancel(`Failed to drive tmux: ${error}`);
+          process.exit(1);
+        }
+        // Exit outside the try/catch so a real attach exit code (e.g. 0)
+        // can't be mistaken for — and overwritten by — the failure path above.
+        if (tmuxExitCode !== undefined) process.exit(tmuxExitCode);
+        return;
+      }
 
       try {
         // If a herdr workspace for this group already exists, just focus it —

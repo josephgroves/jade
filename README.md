@@ -40,7 +40,7 @@ To verify that compiled binaries embed Cursor skills text, run **`bun run --cwd 
 | `jade workspace remove <name>` | Remove a workspace (optionally delete branches with `-d`) |
 | `jade checkout <branch>` | Checkout or create (`-c`) a branch in a specific app |
 | `jade status [name]` | Report a workspace's apps and branches, or the root summary when run outside one (`--root` to force, `--json` for the full report) |
-| `jade open [group]` | Open a worktree group in the [herdr](https://herdr.dev) multiplexer: a root tab plus one tab per app |
+| `jade open [group]` | Open a worktree group as a herdr workspace or tmux session: a root tab/window plus one per app |
 | `jade skills install` | Copy bundled agent skills into `.cursor/skills/` and/or `.claude/skills/` (`--target`, `--scope`) |
 
 Use **`jade skills install`** from any project root (or **`--project <dir>`**) to add the Jade workspace skill for Cursor and/or Claude Code agents. It auto-detects which tool config(s) already exist and installs into those; pass **`--target cursor|claude|all`** to force a specific one, or **`--scope user`** to install into your home directory (`~/.claude/skills`, `~/.cursor/skills`) instead of a project. Skill text is **imported at build time** (`skills/*/SKILL.md` with `type: "text"`), so a **`bun build --compile`** binary embeds them and does not need a separate `skills/` folder next to the executable.
@@ -135,6 +135,45 @@ jade open feat-auth  # or name a group explicitly (defaults to `main`)
 `jade open` drives herdr through its CLI (`herdr workspace create` / `tab create`) and
 only runs inside a herdr session — it checks `HERDR_ENV=1` and prefers `HERDR_BIN_PATH`
 when herdr sets it. Outside herdr it exits with a hint instead of doing anything.
+
+## Tmux integration
+
+If you're not using herdr, `jade open` falls back to plain [tmux](https://github.com/tmux/tmux):
+same idea, one **tmux session** per group (named after the group), with a **root window**
+at the group root plus **one window per app**. Unlike the herdr backend it has no
+precondition — it works from anywhere, and hands off to the session differently
+depending on where "anywhere" is:
+
+```bash
+cd workspace/feat-navigation
+jade open            # opens the current group as a tmux session
+jade open feat-auth  # or name a group explicitly
+```
+
+- **Plain terminal** (no herdr, no tmux client yet): creates (or finds) the session,
+  then hands the terminal over to it with an interactive `tmux attach-session` — no
+  need to start tmux yourself first.
+- **Already inside a tmux client** (`$TMUX` set — e.g. re-running `jade open` from a
+  pane in that same session, or in a different tmux session): a quick, non-blocking
+  `switch-client` instead, since you're already looking at a client.
+- **Inside a herdr pane, with `--tmux`** (see below): creates (or finds) the session
+  and stops there — it's left running in the background rather than attached, since
+  there's no plain terminal to hand off to and attaching would nest a tmux client
+  inside the herdr pane.
+
+Re-running `jade open` for a group that already has a tmux session **reuses it**
+instead of recreating windows.
+
+`HERDR_ENV=1` takes priority when both herdr and tmux are active — pass **`--tmux`**
+to force the tmux backend anyway (e.g. to keep a tmux session for a group alive
+alongside its herdr workspace):
+
+```bash
+jade open --tmux            # tmux session for the current group, even inside herdr
+jade open feat-auth --tmux
+```
+
+`jade open` prefers `TMUX_BIN_PATH` when set, falling back to `tmux` on `PATH`.
 
 ### Herdr plugin
 
