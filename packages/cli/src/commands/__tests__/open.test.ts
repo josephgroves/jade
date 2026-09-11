@@ -185,12 +185,12 @@ describe("open command", () => {
   });
 
   test("creates a tmux session with a root window plus one window per app, already attached", async () => {
-    const { workspacePath } = await setupWorkspaceWithApps();
+    const { workspacePath, fs, config } = await setupWorkspaceWithApps();
     delete process.env.HERDR_ENV;
     process.env.TMUX = "/tmp/tmux-1000/default,12345,0";
 
     const { runTmux, calls } = captureTmux(false);
-    const openCmd = makeOpenCommand(unusedHerdr, runTmux, unusedAttach);
+    const openCmd = makeOpenCommand(unusedHerdr, fs, config, runTmux, unusedAttach);
 
     await withCapturedConsole(() =>
       openCmd.run!({ args: { workspace: workspacePath } } as any)
@@ -208,12 +208,12 @@ describe("open command", () => {
   });
 
   test("switches to the existing tmux session instead of recreating it, already attached", async () => {
-    const { workspacePath } = await setupWorkspaceWithApps();
+    const { workspacePath, fs, config } = await setupWorkspaceWithApps();
     delete process.env.HERDR_ENV;
     process.env.TMUX = "/tmp/tmux-1000/default,12345,0";
 
     const { runTmux, calls } = captureTmux(true);
-    const openCmd = makeOpenCommand(unusedHerdr, runTmux, unusedAttach);
+    const openCmd = makeOpenCommand(unusedHerdr, fs, config, runTmux, unusedAttach);
 
     await withCapturedConsole(() =>
       openCmd.run!({ args: { workspace: workspacePath } } as any)
@@ -226,13 +226,13 @@ describe("open command", () => {
   });
 
   test("falls back to an interactive tmux attach from a plain terminal (no herdr, no tmux client)", async () => {
-    const { workspacePath } = await setupWorkspaceWithApps();
+    const { workspacePath, fs, config } = await setupWorkspaceWithApps();
     delete process.env.HERDR_ENV;
     delete process.env.TMUX;
 
     const { runTmux, calls } = captureTmux(false);
     const { attachTmux, calls: attachCalls } = captureAttach(0);
-    const openCmd = makeOpenCommand(unusedHerdr, runTmux, attachTmux);
+    const openCmd = makeOpenCommand(unusedHerdr, fs, config, runTmux, attachTmux);
 
     await expectsExit(() => openCmd.run!({ args: { workspace: workspacePath } } as any), 0);
 
@@ -249,13 +249,13 @@ describe("open command", () => {
   });
 
   test("attaches straight to an existing session from a plain terminal", async () => {
-    const { workspacePath } = await setupWorkspaceWithApps();
+    const { workspacePath, fs, config } = await setupWorkspaceWithApps();
     delete process.env.HERDR_ENV;
     delete process.env.TMUX;
 
     const { runTmux, calls } = captureTmux(true);
     const { attachTmux, calls: attachCalls } = captureAttach(0);
-    const openCmd = makeOpenCommand(unusedHerdr, runTmux, attachTmux);
+    const openCmd = makeOpenCommand(unusedHerdr, fs, config, runTmux, attachTmux);
 
     await expectsExit(() => openCmd.run!({ args: { workspace: workspacePath } } as any), 0);
 
@@ -264,12 +264,12 @@ describe("open command", () => {
   });
 
   test("--tmux forces the tmux backend from inside herdr, creating the session without attaching", async () => {
-    const { workspacePath } = await setupWorkspaceWithApps();
+    const { workspacePath, fs, config } = await setupWorkspaceWithApps();
     process.env.HERDR_ENV = "1";
     delete process.env.TMUX;
 
     const { runTmux, calls } = captureTmux(false);
-    const openCmd = makeOpenCommand(unusedHerdr, runTmux, unusedAttach);
+    const openCmd = makeOpenCommand(unusedHerdr, fs, config, runTmux, unusedAttach);
 
     await withCapturedConsole(() =>
       openCmd.run!({ args: { workspace: workspacePath, tmux: true } } as any)
@@ -287,12 +287,12 @@ describe("open command", () => {
   });
 
   test("--tmux from inside herdr with an existing session just leaves it running", async () => {
-    const { workspacePath } = await setupWorkspaceWithApps();
+    const { workspacePath, fs, config } = await setupWorkspaceWithApps();
     process.env.HERDR_ENV = "1";
     delete process.env.TMUX;
 
     const { runTmux, calls } = captureTmux(true);
-    const openCmd = makeOpenCommand(unusedHerdr, runTmux, unusedAttach);
+    const openCmd = makeOpenCommand(unusedHerdr, fs, config, runTmux, unusedAttach);
 
     await withCapturedConsole(() =>
       openCmd.run!({ args: { workspace: workspacePath, tmux: true } } as any)
@@ -302,12 +302,12 @@ describe("open command", () => {
   });
 
   test("--tmux with an attached tmux client still switches, even inside herdr", async () => {
-    const { workspacePath } = await setupWorkspaceWithApps();
+    const { workspacePath, fs, config } = await setupWorkspaceWithApps();
     process.env.HERDR_ENV = "1";
     process.env.TMUX = "/tmp/tmux-1000/default,12345,0";
 
     const { runTmux, calls } = captureTmux(true);
-    const openCmd = makeOpenCommand(unusedHerdr, runTmux, unusedAttach);
+    const openCmd = makeOpenCommand(unusedHerdr, fs, config, runTmux, unusedAttach);
 
     await withCapturedConsole(() =>
       openCmd.run!({ args: { workspace: workspacePath, tmux: true } } as any)
