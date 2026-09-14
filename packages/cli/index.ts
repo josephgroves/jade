@@ -10,6 +10,7 @@ import open from "./src/commands/open.ts";
 import update from "./src/commands/update.ts";
 import skills from "./src/commands/skills.ts";
 import env from "./src/commands/env.ts";
+import brand from "./src/commands/brand.ts";
 
 const main = defineCommand({
   meta: {
@@ -28,6 +29,7 @@ const main = defineCommand({
     update,
     skills,
     env,
+    brand,
   },
 });
 

@@ -1,9 +1,10 @@
 import { defineCommand } from "citty";
 import { resolve } from "path";
-import { intro, outro, cancel, log, spinner } from "@clack/prompts";
-import { findWorkspaceRoot, getBarePath, getWorktreeGroupPath, listBareRepos } from "../utils/workspace.ts";
+import { cancel, log } from "@clack/prompts";
+import { findWorkspaceRoot, getWorktreeGroupPath, listBareRepos } from "../utils/workspace.ts";
 import { type GitBackend, realGitBackend } from "../utils/git-backend.ts";
 import { type FileSystemBackend, realFileSystemBackend } from "../utils/fs-backend.ts";
+import { createGemProgress, jadeIntro, jadeOutro } from "../utils/theme.ts";
 
 export function makeUpdateCommand(
   git: GitBackend = realGitBackend,
@@ -39,7 +40,6 @@ export function makeUpdateCommand(
       }
 
       const bareRepos = await listBareRepos(workspaceRoot, fs);
-      const barePath = getBarePath(workspaceRoot);
       const mainPath = getWorktreeGroupPath(workspaceRoot, "main");
 
       if (bareRepos.length === 0) {
@@ -47,25 +47,33 @@ export function makeUpdateCommand(
         process.exit(1);
       }
 
-      if (verbose) intro(`Updating main workspace`);
+      if (verbose) jadeIntro(`Updating main workspace`);
+
+      const appsToUpdate = (
+        await Promise.all(
+          bareRepos.map(async (appName) => ({
+            appName,
+            exists: await fs.pathExists(resolve(mainPath, appName)),
+          }))
+        )
+      )
+        .filter((a) => a.exists)
+        .map((a) => a.appName);
 
       const updated: string[] = [];
       const failed: { name: string; error: unknown }[] = [];
-      const s = verbose ? spinner() : undefined;
+      const progress = verbose ? createGemProgress(appsToUpdate) : undefined;
 
-      for (const appName of bareRepos) {
-        const bareRepoPath = resolve(barePath, appName);
+      for (const appName of appsToUpdate) {
         const appWorktreePath = resolve(mainPath, appName);
 
-        if (!await fs.pathExists(appWorktreePath)) continue;
-
-        s?.start(`Updating ${appName}`);
+        progress?.start(appName, "updating…");
         try {
           await git.pullFF(appWorktreePath);
           updated.push(appName);
-          s?.stop(`Updated ${appName}`);
+          progress?.finish(appName, "done", "updated");
         } catch (error) {
-          s?.stop(`Failed ${appName}`);
+          progress?.finish(appName, "failed", "failed");
           if (verbose) log.warn(`${appName}: ${error}`);
           failed.push({ name: appName, error });
         }
@@ -74,7 +82,7 @@ export function makeUpdateCommand(
       if (verbose) {
         if (updated.length > 0) log.success(`Updated: ${updated.join(", ")}`);
         if (failed.length > 0) log.warn(`Failed: ${failed.map((f) => f.name).join(", ")}`);
-        outro(`Done`);
+        jadeOutro(`Done`);
       } else {
         const parts: string[] = [];
         if (updated.length > 0) parts.push(`${updated.length} updated`);

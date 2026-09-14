@@ -1,9 +1,10 @@
 import { defineCommand } from "citty";
 import { resolve } from "path";
-import { intro, outro, cancel, log, spinner } from "@clack/prompts";
+import { cancel, log } from "@clack/prompts";
 import { findWorkspaceRoot, listBareRepos, listWorktreeDirs } from "../utils/workspace.ts";
 import { getEnvDirPath, syncEnvToGroup } from "../utils/env.ts";
 import { type FileSystemBackend, realFileSystemBackend } from "../utils/fs-backend.ts";
+import { jadeIntro, jadeOutro, jadeSpinner } from "../utils/theme.ts";
 
 export function makeEnvSyncCommand(fs: FileSystemBackend = realFileSystemBackend) {
   return defineCommand({
@@ -28,7 +29,7 @@ export function makeEnvSyncCommand(fs: FileSystemBackend = realFileSystemBackend
         process.exit(1);
       }
 
-      intro(`Syncing env files`);
+      jadeIntro(`Syncing env files`);
 
       const envDir = getEnvDirPath(workspaceRoot);
       const envDirExists = await fs.pathExists(envDir);
@@ -42,11 +43,11 @@ export function makeEnvSyncCommand(fs: FileSystemBackend = realFileSystemBackend
 
       if (groups.length === 0 || apps.length === 0) {
         log.warn(`No worktrees found to sync.`);
-        outro(`Done`);
+        jadeOutro(`Done`);
         return;
       }
 
-      const s = spinner();
+      const s = jadeSpinner();
       s.start(`Copying env files`);
 
       const allCopied: string[] = [];
@@ -67,7 +68,7 @@ export function makeEnvSyncCommand(fs: FileSystemBackend = realFileSystemBackend
         log.info(`No source .env for: ${[...allSkipped].join(", ")}`);
       }
 
-      outro(`Done`);
+      jadeOutro(`Done`);
     },
   });
 }

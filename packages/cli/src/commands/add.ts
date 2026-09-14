@@ -1,11 +1,12 @@
 import { defineCommand } from "citty";
 import { resolve } from "path";
-import { intro, outro, cancel, log, spinner } from "@clack/prompts";
+import { cancel, log } from "@clack/prompts";
 import { findWorkspaceRoot, getBarePath, getWorktreeGroupPath } from "../utils/workspace.ts";
 import { addAppToConfig } from "../utils/config.ts";
 import { type GitBackend, realGitBackend } from "../utils/git-backend.ts";
 import { type FileSystemBackend, realFileSystemBackend } from "../utils/fs-backend.ts";
 import { type ConfigBackend, realConfigBackend } from "../utils/config-backend.ts";
+import { jadeIntro, jadeOutro, jadeSpinner } from "../utils/theme.ts";
 
 /**
  * Is the positional argument a clone URL rather than a bare repo name?
@@ -81,7 +82,7 @@ export function makeAddCommand(
       },
     },
     async run({ args }) {
-      intro(`Adding repository to workspace`);
+      jadeIntro(`Adding repository to workspace`);
 
       const workspaceRoot = args.workspace
         ? resolve(args.workspace as string)
@@ -133,7 +134,7 @@ export function makeAddCommand(
       }
 
       try {
-        const cloneSpinner = spinner();
+        const cloneSpinner = jadeSpinner();
         cloneSpinner.start(`Cloning ${appName} from ${url}`);
         await git.cloneBare(url, bareRepoPath);
         cloneSpinner.stop(`Cloned bare repository to .bare/${appName}`);
@@ -142,7 +143,7 @@ export function makeAddCommand(
         let detectedBranch: string | undefined;
 
         if (!defaultBranch) {
-          const branchSpinner = spinner();
+          const branchSpinner = jadeSpinner();
           branchSpinner.start(`Detecting default branch`);
           try {
             detectedBranch = await git.getDefaultBranch(bareRepoPath);
@@ -154,7 +155,7 @@ export function makeAddCommand(
           }
         }
 
-        const worktreeSpinner = spinner();
+        const worktreeSpinner = jadeSpinner();
         worktreeSpinner.start(`Setting up main workspace`);
 
         const mainGroupPath = getWorktreeGroupPath(workspaceRoot, "main");
@@ -175,7 +176,7 @@ export function makeAddCommand(
         await addAppToConfig(config, workspaceRoot, appName, defaultBranch);
         log.success(`Updated jade.json config`);
 
-        outro(`Successfully added ${appName}!`);
+        jadeOutro(`Successfully added ${appName}!`);
       } catch (error) {
         cancel(`Failed to add repository: ${error}`);
         process.exit(1);

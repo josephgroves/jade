@@ -1,9 +1,10 @@
 import { defineCommand } from "citty";
 import { resolve } from "path";
-import { intro, outro, cancel, spinner } from "@clack/prompts";
+import { cancel } from "@clack/prompts";
 import { findWorkspaceRoot } from "../utils/workspace.ts";
 import { type GitBackend, realGitBackend } from "../utils/git-backend.ts";
 import { type FileSystemBackend, realFileSystemBackend } from "../utils/fs-backend.ts";
+import { jadeIntro, jadeOutro, jadeSpinner } from "../utils/theme.ts";
 
 export function makeCheckoutCommand(
   git: GitBackend = realGitBackend,
@@ -37,7 +38,7 @@ export function makeCheckoutCommand(
       },
     },
     async run({ args }) {
-      intro(`Checkout`);
+      jadeIntro(`Checkout`);
 
       const workspaceRoot = args.workspace
         ? resolve(args.workspace as string)
@@ -68,13 +69,13 @@ export function makeCheckoutCommand(
         targetDescription = "current directory";
       }
 
-      const s = spinner();
+      const s = jadeSpinner();
       s.start(`${create ? "Creating and checking out" : "Checking out"} branch '${branch}' in ${targetDescription}`);
 
       try {
         await git.checkout(targetPath, branch, create);
         s.stop(`${create ? "Created and checked out" : "Checked out"} branch '${branch}'`);
-        outro(`Done`);
+        jadeOutro(`Done`);
       } catch (error) {
         s.stop(`Failed`);
         cancel(`Failed to checkout branch: ${error}`);

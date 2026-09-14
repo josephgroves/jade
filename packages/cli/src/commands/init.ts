@@ -1,9 +1,11 @@
 import { defineCommand } from "citty";
 import { resolve } from "path";
-import { intro, outro, cancel, log } from "@clack/prompts";
+import { cancel, log } from "@clack/prompts";
 import { getBarePath, getMainWorktreePath, getWorktreeContainerPath } from "../utils/workspace.ts";
 import { type FileSystemBackend, realFileSystemBackend } from "../utils/fs-backend.ts";
 import { type ConfigBackend, realConfigBackend } from "../utils/config-backend.ts";
+import { jadeIntro, jadeOutro, printJadeLogoLockup } from "../utils/theme.ts";
+import pkg from "../../package.json" with { type: "json" };
 
 export function makeInitCommand(
   fs: FileSystemBackend = realFileSystemBackend,
@@ -31,7 +33,8 @@ export function makeInitCommand(
       const mainPath = getMainWorktreePath(workspaceRoot);
       const worktreeContainerPath = getWorktreeContainerPath(workspaceRoot);
 
-      intro(`Initializing workspace at: ${workspaceRoot}`);
+      printJadeLogoLockup("Workspace manager for multi-app development", pkg.version);
+      jadeIntro(`Initializing workspace at: ${workspaceRoot}`);
 
       if (!await fs.pathExists(workspaceRoot)) {
         await fs.mkdirp(workspaceRoot);
@@ -59,7 +62,7 @@ export function makeInitCommand(
       });
       log.success(`Created jade.json config`);
 
-      outro(`Workspace initialized! Next: cd ${args.path} && jade add <repo-url>`);
+      jadeOutro(`Workspace initialized! Next: cd ${args.path} && jade add <repo-url>`);
     },
   });
 }

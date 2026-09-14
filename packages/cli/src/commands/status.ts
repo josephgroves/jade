@@ -7,6 +7,7 @@ import { type GitBackend, realGitBackend, type WorktreeStatus } from "../utils/g
 import { type FileSystemBackend, realFileSystemBackend } from "../utils/fs-backend.ts";
 import { type ConfigBackend, realConfigBackend } from "../utils/config-backend.ts";
 import { defaultRunHerdr, findWorkspaceByLabel, type HerdrRunner } from "../utils/herdr.ts";
+import { amber, bold, fg, jade, red, statusBullet, type StatusBulletState } from "../utils/theme.ts";
 import pkg from "../../package.json" with { type: "json" };
 
 export type StatusTarget = { view: "root" } | { view: "workspace"; name: string };
@@ -107,28 +108,39 @@ function printStatusJson(workspaceRoot: string, orgUrl: string | undefined, grou
  * via --json rather than crowding the interactive view.
  */
 function printWorkspaceStatus(group: ResolvedGroup, apps: AppReport[]): void {
-  const lines: string[] = [`workspace: ${group.name}`];
+  const lines: string[] = [`${fg(jade.core, "◆")}  ${bold(`workspace: ${group.name}`)}`];
   const installed = apps.filter((app) => app.present);
 
   if (installed.length === 0) {
     lines.push("  (none)");
   } else {
-    const rows = installed.map((app) => ({
-      name: app.name,
-      branch: app.error ? "(error)" : (app.branch ?? "?"),
+    const rows = installed.map((app) => {
       // Only branch-level facts earn a marker here; the branch is the one thing
       // this view reports, so drift and detachment are what can contradict it.
-      marker: app.detached ? "[detached]" : app.drift ? "[drift]" : "",
-    }));
+      const state: StatusBulletState = app.error
+        ? "error"
+        : app.detached
+          ? "detached"
+          : app.drift
+            ? "drift"
+            : "clean";
+      return {
+        name: app.name,
+        branch: app.error ? "(error)" : (app.branch ?? "?"),
+        marker: app.detached ? "[detached]" : app.drift ? "[drift]" : "",
+        bullet: statusBullet(state),
+      };
+    });
 
     const nameWidth = Math.max(...rows.map((r) => r.name.length));
     const branchWidth = Math.max(...rows.map((r) => r.branch.length));
 
     for (const row of rows) {
-      const cells = `  ${row.name.padEnd(nameWidth)}  ${
+      const marker = row.marker === "[detached]" ? fg(red, row.marker) : row.marker ? fg(amber, row.marker) : "";
+      const cells = `  ${row.bullet} ${row.name.padEnd(nameWidth)}  ${
         row.marker ? row.branch.padEnd(branchWidth) : row.branch
       }`;
-      lines.push(row.marker ? `${cells}  ${row.marker}` : cells);
+      lines.push(marker ? `${cells}  ${marker}` : cells);
     }
   }
 

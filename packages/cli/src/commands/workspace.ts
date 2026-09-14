@@ -1,6 +1,6 @@
 import { defineCommand } from "citty";
 import { resolve } from "path";
-import { intro, outro, cancel, log, spinner, multiselect, isCancel } from "@clack/prompts";
+import { cancel, log, multiselect, isCancel } from "@clack/prompts";
 import {
   findWorkspaceRoot,
   getBarePath,
@@ -14,6 +14,7 @@ import { copyEnvToWorktree } from "../utils/env.ts";
 import { type FileSystemBackend, realFileSystemBackend } from "../utils/fs-backend.ts";
 import { getAppDefaultBranch } from "../utils/config.ts";
 import { type ConfigBackend, realConfigBackend } from "../utils/config-backend.ts";
+import { createGemProgress, jadeIntro, jadeOutro, jadeSpinner } from "../utils/theme.ts";
 
 export type SelectAppsFn = (apps: string[]) => Promise<string[] | symbol>;
 
@@ -103,7 +104,7 @@ export function makeWorkspaceAddCommand(
       const worktreeDirPath = getWorktreeGroupPath(workspaceRoot, name);
       const existing = await fs.pathExists(worktreeDirPath);
 
-      intro(existing ? `Adding apps to workspace '${name}'` : `Creating workspace`);
+      jadeIntro(existing ? `Adding apps to workspace '${name}'` : `Creating workspace`);
 
       try {
         await fs.mkdirp(worktreeDirPath);
@@ -121,7 +122,7 @@ export function makeWorkspaceAddCommand(
         if (bareRepos.length === 0) {
           log.success(`Created empty workspace directory workspace/${name}`);
           log.warn(`No apps found. Add apps with 'jade add <repo-url>'`);
-          outro(`Done`);
+          jadeOutro(`Done`);
           return;
         }
 
@@ -158,24 +159,23 @@ export function makeWorkspaceAddCommand(
 
         const created: string[] = [];
         const skipped: string[] = [];
-        const s = spinner();
-        s.start(`Setting up apps for '${name}'`);
+        const progress = createGemProgress(selectedApps);
 
         for (const appName of selectedApps) {
           const bareRepoPath = resolve(barePath, appName);
           const appWorktreePath = resolve(worktreeDirPath, appName);
 
+          progress.start(appName, "adding…");
           try {
             const actualBranch = await git.worktreeAdd(bareRepoPath, appWorktreePath, name);
             created.push(actualBranch !== name ? `${appName} (${actualBranch})` : appName);
-            s.message(`Added ${appName}`);
+            progress.finish(appName, "done", "added");
           } catch (error) {
+            progress.finish(appName, "failed", "failed");
             log.warn(`Could not add ${appName}: ${error}`);
             skipped.push(appName);
           }
         }
-
-        s.stop(`Apps added`);
 
         const envCopied: string[] = [];
         for (const appName of selectedApps) {
@@ -195,7 +195,7 @@ export function makeWorkspaceAddCommand(
           log.warn(`Skipped: ${skipped.join(", ")}`);
         }
 
-        outro(`Workspace '${name}' ready! Next: cd workspace/${name}`);
+        jadeOutro(`Workspace '${name}' ready! Next: cd workspace/${name}`);
       } catch (error) {
         cancel(`Failed to create workspace: ${error}`);
         process.exit(1);
@@ -229,7 +229,7 @@ export function makeWorkspaceListCommand(
     },
     async run({ args }) {
       const asJson = args.json as boolean;
-      if (!asJson) intro(`Workspaces`);
+      if (!asJson) jadeIntro(`Workspaces`);
 
       const workspaceRoot = args.workspace
         ? resolve(args.workspace as string)
@@ -248,7 +248,7 @@ export function makeWorkspaceListCommand(
           if (asJson) {
             console.log(JSON.stringify({ groups: [] }));
           } else {
-            outro(`No workspaces found.`);
+            jadeOutro(`No workspaces found.`);
           }
           return;
         }
@@ -285,7 +285,7 @@ export function makeWorkspaceListCommand(
         if (asJson) {
           console.log(JSON.stringify({ groups }));
         } else {
-          outro(`Done`);
+          jadeOutro(`Done`);
         }
       } catch (error) {
         cancel(`Failed to list workspaces: ${error}`);
@@ -331,7 +331,7 @@ export function makeWorkspaceRemoveCommand(
       },
     },
     async run({ args }) {
-      intro(`Removing workspace`);
+      jadeIntro(`Removing workspace`);
 
       const workspaceRoot = args.workspace
         ? resolve(args.workspace as string)
@@ -361,45 +361,63 @@ export function makeWorkspaceRemoveCommand(
       try {
         const bareRepos = await listBareRepos(workspaceRoot, fs);
         const barePath = getBarePath(workspaceRoot);
-        const s = spinner();
-        s.start(`Removing workspace '${name}'`);
+        const appsPresent = (
+          await Promise.all(
+            bareRepos.map(async (appName) => ({
+              appName,
+              exists: await fs.pathExists(resolve(worktreeDirPath, appName)),
+            }))
+          )
+        )
+          .filter((a) => a.exists)
+          .map((a) => a.appName);
 
-        for (const appName of bareRepos) {
+        const removeProgress = createGemProgress(appsPresent);
+        for (const appName of appsPresent) {
           const bareRepoPath = resolve(barePath, appName);
           const appWorktreePath = resolve(worktreeDirPath, appName);
 
-          if (await fs.pathExists(appWorktreePath)) {
-            try {
-              await git.worktreeRemove(bareRepoPath, appWorktreePath);
-              s.message(`Removed ${appName}`);
-            } catch (error) {
-              log.warn(`Could not remove ${appName}: ${error}`);
-            }
+          removeProgress.start(appName, "removing…");
+          try {
+            await git.worktreeRemove(bareRepoPath, appWorktreePath);
+            removeProgress.finish(appName, "done", "removed");
+          } catch (error) {
+            removeProgress.finish(appName, "failed", "failed");
+            log.warn(`Could not remove ${appName}: ${error}`);
           }
         }
 
         await fs.remove(worktreeDirPath);
-        s.stop(`Removed directory workspace/${name}/`);
+        log.success(`Removed directory workspace/${name}/`);
 
         if (deleteBranches) {
-          const branchSpinner = spinner();
-          branchSpinner.start(`Deleting branch '${name}' in all apps`);
           const deleted: string[] = [];
           const skipped: string[] = [];
 
-          for (const appName of bareRepos) {
+          const appsWithMain = (
+            await Promise.all(
+              bareRepos.map(async (appName) => ({
+                appName,
+                exists: await fs.pathExists(resolve(workspaceRoot, "main", appName)),
+              }))
+            )
+          )
+            .filter((a) => a.exists)
+            .map((a) => a.appName);
+
+          const branchProgress = createGemProgress(appsWithMain);
+          for (const appName of appsWithMain) {
             const mainAppPath = resolve(workspaceRoot, "main", appName);
-            if (await fs.pathExists(mainAppPath)) {
-              try {
-                await git.deleteBranch(mainAppPath, name, force);
-                deleted.push(appName);
-              } catch {
-                skipped.push(appName);
-              }
+            branchProgress.start(appName, "deleting branch…");
+            try {
+              await git.deleteBranch(mainAppPath, name, force);
+              deleted.push(appName);
+              branchProgress.finish(appName, "done", "deleted");
+            } catch {
+              skipped.push(appName);
+              branchProgress.finish(appName, "failed", "skipped");
             }
           }
-
-          branchSpinner.stop(`Branch deletion complete`);
 
           if (deleted.length > 0) {
             log.success(`Deleted branch '${name}' in: ${deleted.join(", ")}`);
@@ -412,7 +430,7 @@ export function makeWorkspaceRemoveCommand(
           }
         }
 
-        outro(`Workspace '${name}' removed!`);
+        jadeOutro(`Workspace '${name}' removed!`);
       } catch (error) {
         cancel(`Failed to remove workspace: ${error}`);
         process.exit(1);
@@ -471,18 +489,28 @@ export function makeWorkspaceUpdateCommand(
       const bareRepos = await listBareRepos(workspaceRoot, fs);
       const jadeConfig = await config.readConfig(workspaceRoot);
 
-      intro(`Updating workspace '${group}'`);
+      jadeIntro(`Updating workspace '${group}'`);
+
+      const appsToUpdate = (
+        await Promise.all(
+          bareRepos.map(async (appName) => ({
+            appName,
+            exists: await fs.pathExists(resolve(groupPath, appName)),
+          }))
+        )
+      )
+        .filter((a) => a.exists)
+        .map((a) => a.appName);
 
       const merged: string[] = [];
       const upToDate: string[] = [];
       const failed: { name: string; error: unknown }[] = [];
-      const s = spinner();
+      const progress = createGemProgress(appsToUpdate);
 
-      for (const appName of bareRepos) {
+      for (const appName of appsToUpdate) {
         const appWorktreePath = resolve(groupPath, appName);
-        if (!await fs.pathExists(appWorktreePath)) continue;
 
-        s.start(`Updating ${appName}`);
+        progress.start(appName, "updating…");
         try {
           const bareRepoPath = resolve(barePath, appName);
           const defaultBranch =
@@ -494,13 +522,13 @@ export function makeWorkspaceUpdateCommand(
 
           if (result === "up-to-date") {
             upToDate.push(appName);
-            s.stop(`${appName}: already up to date`);
+            progress.finish(appName, "done", "already up to date");
           } else {
             merged.push(appName);
-            s.stop(`${appName}: merged latest ${defaultBranch}`);
+            progress.finish(appName, "done", `merged latest ${defaultBranch}`);
           }
         } catch (error) {
-          s.stop(`${appName}: failed`);
+          progress.finish(appName, "failed", "failed");
           log.warn(`${appName}: merge failed — resolve manually in ${appWorktreePath}\n  ${error}`);
           failed.push({ name: appName, error });
         }
@@ -514,7 +542,7 @@ export function makeWorkspaceUpdateCommand(
         if (failed.length > 0) log.warn(`Failed: ${failed.map((f) => f.name).join(", ")}`);
       }
 
-      outro(`Done`);
+      jadeOutro(`Done`);
     },
   });
 }

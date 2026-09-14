@@ -1,11 +1,12 @@
 import { defineCommand } from "citty";
 import { resolve } from "path";
-import { intro, outro, cancel, log, spinner } from "@clack/prompts";
+import { cancel, log } from "@clack/prompts";
 import { findWorkspaceRoot, getBarePath, listWorktreeDirs, listBareRepos } from "../utils/workspace.ts";
 import { removeAppFromConfig } from "../utils/config.ts";
 import { type GitBackend, realGitBackend } from "../utils/git-backend.ts";
 import { type FileSystemBackend, realFileSystemBackend } from "../utils/fs-backend.ts";
 import { type ConfigBackend, realConfigBackend } from "../utils/config-backend.ts";
+import { jadeIntro, jadeOutro, jadeSpinner } from "../utils/theme.ts";
 
 export function makeRemoveCommand(
   git: GitBackend = realGitBackend,
@@ -30,7 +31,7 @@ export function makeRemoveCommand(
       },
     },
     async run({ args }) {
-      intro(`Removing repository from workspace`);
+      jadeIntro(`Removing repository from workspace`);
 
       const workspaceRoot = args.workspace
         ? resolve(args.workspace as string)
@@ -55,7 +56,7 @@ export function makeRemoveCommand(
       }
 
       try {
-        const s = spinner();
+        const s = jadeSpinner();
         s.start(`Removing ${appName}`);
 
         const worktrees = await git.worktreeList(bareRepoPath);
@@ -74,7 +75,7 @@ export function makeRemoveCommand(
         await removeAppFromConfig(config, workspaceRoot, appName);
         log.success(`Updated jade.json config`);
 
-        outro(`Successfully removed ${appName}!`);
+        jadeOutro(`Successfully removed ${appName}!`);
       } catch (error) {
         cancel(`Failed to remove repository: ${error}`);
         process.exit(1);
